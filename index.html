@@ -595,7 +595,7 @@ const headsetHint='Open this game directly in Meta Quest Browser or another WebX
 async function checkVR(){
  try{
   vrSupported=Boolean(window.isSecureContext&&navigator.xr&&await navigator.xr.isSessionSupported('immersive-vr'));
-  if(!xrStarting&&!mode)vrMessage(vrSupported?'Headset detected. Select Enter VR.':'Immersive VR unavailable here. '+headsetHint);
+  if(!xrStarting&&!mode)$('notice').textContent=(vrSupported?'Headset detected. Select Enter VR.':'Immersive VR unavailable here. '+headsetHint);
  }catch{vrSupported=null;}
 }
 navigator.xr?.addEventListener?.('devicechange',checkVR);
@@ -629,6 +629,10 @@ async function xr(requested){
   renderer.xr.setFramebufferScaleFactor(ar?1:.8);
   await renderer.xr.setSession(session);
   if(ended)return;
+  if(!ar&&referenceType==='local'){
+   const space=renderer.xr.getReferenceSpace();
+   renderer.xr.setReferenceSpace(space.getOffsetReferenceSpace(new XRRigidTransform({y:-1.63})));
+  }
   mode=requested;document.exitPointerLock?.();
   camera.position.set(0,0,0);camera.rotation.set(0,0,0);
   vrMessage('');
@@ -636,7 +640,7 @@ async function xr(requested){
    world.visible=false;arWorld.visible=true;arPlaced=false;arIndex=0;arRelic.visible=false;
    rig.position.set(0,0,0);$('cover').hidden=true;$('hud').style.display='none';
   }else{
-   vrText.position.y=referenceType==='local-floor'?2.28:.60;
+   vrText.position.y=2.28;
    journal(false);vrText.visible=true;
    if(!running)start();else update();
   }
