@@ -509,12 +509,25 @@ item('First aid kit',2.32,1.04,-3.75,0xc5ddd3,entry=>{
 });
 for(const [name,kind] of [['Wristband','wristband'],['Steel flashlight','flashlight'],['Spare tools','tools'],['Stun launcher','stun'],['First aid kit','medical']])dressPickup(name,kind);
 const vrText=new T.Group();rig.add(vrText);vrText.visible=false;
-const vrControls=label(vrText,'LEFT STICK MOVE    ·    RIGHT STICK TURN',0,-.105,0,.69);
-const vrActions=label(vrText,'TRIGGER USE / ATTACK     ·     GRIP THROW',0,-.208,0,.69);
+const vrActions=label(vrText,'TRIGGER USE / ATTACK  ·  GRIP THROW',0,-.312,0,.74);
+const vrOptions=label(vrText,'X CHANGE MOVEMENT  ·  Y CHANGE TURN',0,-.206,0,.74);
 const vrPosition=new T.Vector3(),vrFacing=new T.Quaternion(),vrForward=new T.Vector3();
-let statusPlane, snapDirection=0;
-for(const panel of [vrControls,vrActions]){
+let statusPlane, movementPanel, snapDirection=0;
+let walkMode=0, smoothTurn=false, moveOptionDown=false, turnOptionDown=false;
+const walkingSpeeds=[2.1,1.15,0];
+const teleportMarker=new T.Mesh(new T.RingGeometry(.19,.29,32),new T.MeshBasicMaterial({color:0x8bffdf,side:T.DoubleSide,transparent:true,opacity:.92,depthWrite:false}));
+teleportMarker.rotation.x=-Math.PI/2;teleportMarker.visible=false;world.add(teleportMarker);
+for(const panel of [vrOptions,vrActions]){
  panel.material.depthTest=false;panel.material.depthWrite=false;panel.renderOrder=20;
+}
+function updateMovementPanel(){
+ if(movementPanel){
+  vrText.remove(movementPanel);movementPanel.material.map.dispose();
+  movementPanel.material.dispose();movementPanel.geometry.dispose();
+ }
+ const text=['LEFT STICK WALK','LEFT STICK SLOW WALK','TILT LEFT STICK · RELEASE TO TELEPORT'][walkMode];
+ movementPanel=label(vrText,text+'  |  '+(smoothTurn?'SMOOTH TURN':'SNAP TURN'),0,-.104,0,.84);
+ movementPanel.material.depthTest=false;movementPanel.material.depthWrite=false;movementPanel.renderOrder=20;
 }
 function refreshVR(){
  if(mode!=='immersive-vr')return;
@@ -550,7 +563,7 @@ function tone(freq,duration,type='sine'){
  }catch{}
 }
 function reset(){
- resetCart();uv.visible=false;b2Shutter.position.y=0;
+ resetCart();teleportMarker.visible=false;uv.visible=false;b2Shutter.position.y=0;
  state={step:0,route:null,clubEvidence:new Set(),hp:100,cash:0,rep:0,ammo:0,throwables:0,gear:'Empty hands',clues:[],nextAttack:0};
  yaw=pitch=0;rig.position.set(0,0,8.2);rig.rotation.set(0,0,0);camera.rotation.set(0,0,0);camera.position.set(0,mode==='immersive-vr'?0:1.63,0);
  for(const i of interact)showItem(i,true);
@@ -569,11 +582,40 @@ function update(){
  gates.forEach(g=>g.mesh.visible=s<g.step);
  refreshVR();
 }
+const movementObstacles=()=>solids.concat(gates.filter(g=>g.mesh.visible));
+function blockedAt(x,z,obstacles){
+ return obstacles.some(o=>Math.abs(x-o.x)<o.w/2+.26&&Math.abs(z-o.z)<o.d/2+.26);
+}
 function move(dx,dz){
- const obstacles=solids.concat(gates.filter(g=>g.mesh.visible));
- const blocked=(x,z)=>obstacles.some(o=>Math.abs(x-o.x)<o.w/2+.26&&Math.abs(z-o.z)<o.d/2+.26);
- if(!blocked(rig.position.x+dx,rig.position.z))rig.position.x+=dx;
- if(!blocked(rig.position.x,rig.position.z+dz))rig.position.z+=dz;
+ const obstacles=movementObstacles();
+ if(!blockedAt(rig.position.x+dx,rig.position.z,obstacles))rig.position.x+=dx;
+ if(!blockedAt(rig.position.x,rig.position.z+dz,obstacles))rig.position.z+=dz;
+}
+function teleportDestination(x,z,dx,dz,obstacles){
+ const length=Math.hypot(dx,dz);
+ if(length<.5)return null;
+ let result=null;
+ for(let d=.12;d<=length;d+=.12){
+  const nextX=x+dx*d/length,nextZ=z+dz*d/length;
+  if(blockedAt(nextX,nextZ,obstacles))break;
+  if(d>=.5)result={x:nextX,z:nextZ};
+ }
+ return result;
+}
+function updateTeleport(side,forward,heading){
+ const magnitude=Math.hypot(side,forward);
+ const obstacles=movementObstacles();
+ if(magnitude>.23){
+  const dx=(Math.cos(heading)*side-Math.sin(heading)*forward)*4.4;
+  const dz=(-Math.sin(heading)*side-Math.cos(heading)*forward)*4.4;
+  const destination=teleportDestination(rig.position.x,rig.position.z,dx,dz,obstacles);
+  teleportMarker.visible=Boolean(destination);
+  if(destination)teleportMarker.position.set(destination.x,.024,destination.z);
+ }else if(magnitude<.08&&teleportMarker.visible){
+  const {x,z}=teleportMarker.position;
+  if(!blockedAt(x,z,obstacles)){rig.position.x=x;rig.position.z=z;}
+  teleportMarker.visible=false;
+ }
 }
 function aim(controller){
  const source=controller||camera;source.updateWorldMatrix(true,false);ray.ray.origin.setFromMatrixPosition(source.matrixWorld);
@@ -717,7 +759,7 @@ async function xr(requested){
   const previous=rig.position.clone();
   const wasRunning=running;
   session.addEventListener('end',()=>{
-   ended=true;mode='';arWorld.visible=false;world.visible=true;vrText.visible=false;
+   ended=true;teleportMarker.visible=false;mode='';arWorld.visible=false;world.visible=true;vrText.visible=false;
    if(ar)rig.position.copy(previous);
    rig.rotation.y=0;camera.position.set(0,1.63,0);camera.rotation.set(pitch,yaw,0,'YXZ');
    if(ar||!running){$('cover').hidden=wasRunning;$('hud').style.display=wasRunning?'block':'none';}
@@ -737,8 +779,8 @@ async function xr(requested){
    world.visible=false;arWorld.visible=true;arPlaced=false;arIndex=0;arRelic.visible=false;
    rig.position.set(0,0,0);$('cover').hidden=true;$('hud').style.display='none';
   }else{
-   snapDirection=0;
-   journal(false);vrText.visible=true;
+   snapDirection=0;moveOptionDown=false;turnOptionDown=false;teleportMarker.visible=false;
+   updateMovementPanel();journal(false);vrText.visible=true;
    if(!running)start();else update();
   }
  }catch(error){
@@ -1002,19 +1044,26 @@ renderer.setAnimationLoop((time,frame)=>{
    const sources=Array.from(session?.inputSources||[]).filter(source=>source.gamepad?.axes.length>=2);
    const left=sources.find(source=>source.handedness==='left');
    const right=sources.find(source=>source.handedness==='right');
+   const optionsPad=(left||right||sources[0])?.gamepad;
+   const selectMove=Boolean(optionsPad?.buttons[4]?.pressed),selectTurn=Boolean(optionsPad?.buttons[5]?.pressed);
+   if(selectMove&&!moveOptionDown){walkMode=(walkMode+1)%walkingSpeeds.length;teleportMarker.visible=false;updateMovementPanel();}
+   if(selectTurn&&!turnOptionDown){smoothTurn=!smoothTurn;updateMovementPanel();}
+   moveOptionDown=selectMove;turnOptionDown=selectTurn;
    const movement=(left||sources[0])?.gamepad?.axes||[];
    const stick=readStick(movement,movement.length>=4?2:0);
    side=stick.x;forward=-stick.y;
    const turning=left&&right?right.gamepad.axes:[];
    const turn=turning[turning.length>=4?2:0]||0;
    if(Math.abs(turn)<.3)snapDirection=0;
-   if(Math.abs(turn)>.65&&!snapDirection){snapDirection=Math.sign(turn);rig.rotation.y-=snapDirection*Math.PI/6;}
+   if(smoothTurn)rig.rotation.y-=readStick([turn,0],0).x*dt*1.7;
+   else if(Math.abs(turn)>.65&&!snapDirection){snapDirection=Math.sign(turn);rig.rotation.y-=snapDirection*Math.PI/6;}
    vrForward.set(0,0,-1).applyQuaternion(vrFacing).applyQuaternion(rig.quaternion);
    if(Math.hypot(vrForward.x,vrForward.z)>.05)heading=Math.atan2(-vrForward.x,-vrForward.z);
    else heading=rig.rotation.y;
+   if(walkMode===2){if(movement.length)updateTeleport(side,forward,heading);else teleportMarker.visible=false;side=forward=0;}
   }
-  if(Math.hypot(side,forward)>(mode?.17:.001)){
-   const scale=dt*(mode?2.6:4.1)/Math.max(1,Math.hypot(side,forward));
+  if(Math.hypot(side,forward)>.001){
+   const scale=dt*(mode?walkingSpeeds[walkMode]:4.1)/Math.max(1,Math.hypot(side,forward));
    move((Math.cos(heading)*side-Math.sin(heading)*forward)*scale,(-Math.sin(heading)*side-Math.cos(heading)*forward)*scale);
   }
   for(const n of enemies){
@@ -1039,6 +1088,7 @@ renderer.setAnimationLoop((time,frame)=>{
   if(elapsed>toast)$('line').textContent='';
  }
 
+ if(!state.hp)teleportMarker.visible=false;
  const dominant=handVisuals.find(hand=>hand.source?.handedness==='right')||handVisuals.find(hand=>hand.source?.targetRayMode==='tracked-pointer');
  for(const hand of handVisuals){
   const active=mode==='immersive-vr'&&hand.source?.targetRayMode==='tracked-pointer';
