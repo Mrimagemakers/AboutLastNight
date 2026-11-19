@@ -3,7 +3,7 @@
 *{box-sizing:border-box}body{margin:0;background:#061016;color:#e9f9ff;font:15px system-ui;overflow:hidden;touch-action:none}canvas{display:block}button{font:inherit;font-weight:700;padding:11px 16px;color:#edfcff;background:#15313c;border:1px solid #6094a0;cursor:pointer}button:hover{background:#286074}#cover,#log{position:fixed;inset:0;z-index:4;display:grid;align-content:center;padding:8vw;background:linear-gradient(90deg,#020a11f5,#020a1120)}h1{font-size:clamp(56px,11vw,160px);line-height:.82;margin:0 0 24px;letter-spacing:-.075em}small{letter-spacing:.22em;color:#79e5e0}p{max-width:46ch;line-height:1.5}#hud{position:fixed;inset:0;pointer-events:none;padding:20px;display:none}#top{display:flex;gap:16px;justify-content:space-between}#top button,#touch button{pointer-events:auto}#objective{font-size:18px;font-weight:800}#stats,#hint{color:#9fe4e6}#cross{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:22px}#caption{position:absolute;bottom:15%;left:50%;transform:translateX(-50%);max-width:min(90%,660px);width:max-content;text-align:center;text-shadow:0 2px 4px #000;font-weight:700}#touch{display:none;position:absolute;bottom:2%;left:2%;right:2%;justify-content:space-between}#touch button{padding:12px}#log[hidden],#cover[hidden]{display:none}#log{background:#08151ef5}#notice{color:#ffbe82}@media(pointer:coarse){#touch{display:flex}#caption{bottom:19%}}
 #entries{max-height:55vh;overflow:auto} #entries p{margin:.5em 0} #top>div:last-child{display:flex;flex-wrap:wrap;gap:5px;align-content:start;justify-content:flex-end} @media(max-width:650px){#top button{font-size:11px;padding:6px}}
 </style>
-<div id="cover"><small>PENGAME PUBLISHING · THE HOLLOW LEGION</small><h1>ABOUT<br>LAST NIGHT</h1><p>04:17 AM. You wake up in a hospital room. Your wristband says D. Coleman. The two men outside your door know the rest. One is wearing your wristband.</p><div><button id="start">Wake up</button> <button id="vr">Enter VR</button> <button id="ar">AR evidence</button></div><p id="notice" role="status"></p></div>
+<div id="cover"><small>PENGAME PUBLISHING · THE HOLLOW LEGION</small><h1>ABOUT<br>LAST NIGHT</h1><p>04:17 AM. You wake up in a hospital room. Your wristband says D. Coleman. The two men outside your door know the rest. One is wearing your wristband.</p><p>Controller: press × (PlayStation) or A (Xbox) to start.</p><div><button id="start">Wake up</button> <button id="vr">Enter VR</button> <button id="ar">AR evidence</button></div><p id="notice" role="status"></p></div>
 <div id="hud"><div id="top"><div><small id="place"></small><div id="objective"></div><div id="stats"></div></div><div><button id="campaign">Campaign</button> <button id="journal">Case file</button> <button id="restart">Restart</button></div></div><div id="cross">+</div><div id="caption"><div id="line"></div><div id="hint"></div></div><div id="touch"><div><button data-key="a">◀</button><button data-key="w">▲</button><button data-key="s">▼</button><button data-key="d">▶</button></div><div><button id="use">Use</button><button id="fire">Attack</button><button id="throw">Throw</button></div></div></div>
 <div id="log" hidden><small>D. COLEMAN</small><h2 id="logTitle">Case file</h2><div id="entries"></div><div><button id="close">Resume</button></div></div>
 <script type="module">
@@ -20,6 +20,7 @@ scene.add(new T.HemisphereLight(0xc6eaff,0x42404f,2.15));
 const solids=[], interact=[], enemies=[], shots=[], keys=new Set();
 const ray=new T.Raycaster(), clock=new T.Clock();
 let state, running=false, mode='', yaw=0,pitch=0,elapsed=0,toast=0,arIndex=0,arPlaced=false,audio;
+let controllerIndex=null, previousButtons=[];
 const campaign=[
  ['Room 408','The Orderly'],['Below Intake','The Mortician'],['The Blue Hour','Investigation'],
  ['High Life After Hours','Velvet'],['Bay B2','The Towman'],['West End Blackout','Switchblade Rook'],
@@ -358,13 +359,50 @@ async function xr(requested){
 $('vr').onclick=()=>xr('immersive-vr');$('ar').onclick=()=>xr('immersive-ar');
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
 reset();
+function readStick(axes, offset){
+ const x=axes[offset]||0,y=axes[offset+1]||0;
+ const magnitude=Math.hypot(x,y),deadzone=.18;
+ if(magnitude<=deadzone)return {x:0,y:0};
+ const scale=(Math.min(magnitude,1)-deadzone)/((1-deadzone)*magnitude);
+ return {x:x*scale,y:y*scale};
+}
+function pollController(dt){
+ if(mode||document.hidden){
+  controllerIndex=null;previousButtons=[];return null;
+ }
+ const pads=Array.from(navigator.getGamepads?.()||[]).filter(p=>p?.connected&&p.mapping==='standard');
+ const pad=pads.find(p=>p.index===controllerIndex)||pads.find(p=>p.buttons.some(b=>b.pressed));
+ if(!pad){controllerIndex=null;previousButtons=[];return null;}
+ const down=pad.buttons.map(b=>b.pressed||b.value>.55);
+ const pressed=index=>down[index]&&(controllerIndex!==pad.index||!previousButtons[index]);
+ const confirm=pressed(0),back=pressed(1),caseFile=pressed(9),throwTool=pressed(5);
+ controllerIndex=pad.index;previousButtons=down;
+ if(!running){
+  if(confirm){start();say('Left stick moves · right stick looks · × / A uses · R2 / RT attacks · R1 / RB throws · Options / Menu opens case file',10);}
+  return null;
+ }
+ if(caseFile){journal($('log').hidden);return null;}
+ if(!$('log').hidden){
+  if(back||confirm)journal(false);
+  return null;
+ }
+ if(!state.hp){if(confirm)reset();return null;}
+ const view=readStick(pad.axes,2);
+ look(view.x*850*dt,view.y*650*dt);
+ if(confirm||pressed(2))use();
+ if(throwTool)attack(null,true);
+ else if(down[7])attack();
+ return readStick(pad.axes,0);
+}
 renderer.setAnimationLoop(()=>{
  const dt=Math.min(.05,clock.getDelta());elapsed+=dt;
+ const padMove=pollController(dt);
  scene.background=mode==='immersive-ar'?null:fogColor;
  scene.fog=mode==='immersive-ar'?null:fog;
  if(running&&mode!=='immersive-ar'&&$('log').hidden&&state.hp){
   const session=renderer.xr.getSession();
   let side=Number(keys.has('d'))-Number(keys.has('a')),forward=Number(keys.has('w'))-Number(keys.has('s'));
+  if(padMove){side+=padMove.x;forward-=padMove.y;}
   let heading=yaw;
   if(mode==='immersive-vr'){
    const input=Array.from(session?.inputSources||[]).find(s=>s.handedness==='left')||Array.from(session?.inputSources||[])[0];
@@ -372,7 +410,7 @@ renderer.setAnimationLoop(()=>{
    side=axes.length>=4?axes[2]:axes[0]||0;forward=-(axes.length>=4?axes[3]:axes[1]||0);
    const direction=new T.Vector3();renderer.xr.getCamera().getWorldDirection(direction);heading=Math.atan2(-direction.x,-direction.z);
   }
-  if(Math.hypot(side,forward)>.17){
+  if(Math.hypot(side,forward)>(mode?.17:.001)){
    const scale=dt*(mode?2.6:4.1)/Math.max(1,Math.hypot(side,forward));
    move((Math.cos(heading)*side-Math.sin(heading)*forward)*scale,(-Math.sin(heading)*side-Math.cos(heading)*forward)*scale);
   }
@@ -392,7 +430,7 @@ renderer.setAnimationLoop(()=>{
    const s=shots[i];s.life-=dt;s.mesh.position.addScaledVector(s.v,dt);
    if(s.life<=0){world.remove(s.mesh);s.mesh.geometry.dispose();s.mesh.material.dispose();shots.splice(i,1);}
   }
-  if(!mode){aim();const item=target();$('hint').textContent=item?'E / USE · '+item.name:'';}
+  if(!mode){aim();const item=target();$('hint').textContent=item?(controllerIndex===null?'E / USE':'× / A · USE')+' · '+item.name:'';}
   if(elapsed>toast)$('line').textContent='';
  }
  renderer.render(scene,camera);
