@@ -143,7 +143,11 @@ function actor(name,x,z,color,hp,kind){
  }else parts=civilian(kind,color);
  g.add(parts.g);
  const tag=label(g,name,0,kind==='hound'?1.02:2.03,0,1.46);
- const enemy={g,hp,max:hp,x,z,legs:parts.legs,arms:parts.arms,tag,kind,next:0,placeholder:[parts.g]};
+ const backing=new T.Mesh(new T.PlaneGeometry(.74,.085),new T.MeshBasicMaterial({color:0x12191d,side:T.DoubleSide}));
+ backing.position.set(0,-.18,.005);tag.add(backing);
+ const health=new T.Mesh(new T.PlaneGeometry(.70,.052),new T.MeshBasicMaterial({color:0x83df9b,side:T.DoubleSide}));
+ health.position.set(0,-.18,.009);tag.add(health);
+ const enemy={g,hp,max:hp,x,z,legs:parts.legs,arms:parts.arms,tag,health,kind,next:0,placeholder:[parts.g]};
  if(kind==='mortician'||kind==='towman')g.scale.setScalar(1.18);
  enemies.push(enemy);return enemy;
 }
@@ -403,7 +407,7 @@ item('Push equipment cart',0,1.1,-2.9,0xf9cf91,e=>{
  say('The cart crashes into the ward. Keep moving.');
 });
 item('Spare tools',-1.8,1.06,-5.6,0xdeac69,e=>{state.throwables+=6;remove(e);update();say('Six tools picked up.');});
-item('Stun launcher',1.7,1,-8,0x58a5d2,e=>{state.gear='Stun launcher';state.ammo+=24;remove(e);update();say('Stun launcher picked up.');});
+item('Stun launcher',1.7,1,-8,0x58a5d2,e=>{state.gear='Stun launcher';state.ammo=Math.max(state.ammo,24);state.reserveAmmo+=12;remove(e);update();say('Stun launcher picked up.');});
 item('Service lift panel',0,1.18,-12,0x4addbd,e=>{
  if(state.step<2)return say('Get farther into the ward.');
  if(enemies.some(enemy=>enemy.kind==='orderly'&&enemy.hp>0))return say('Defeat the Orderly to unlock the lift.');
@@ -707,6 +711,21 @@ for(const [index,level] of laterLevels.entries()){
  });
 }
 
+function chargeCache(x,z,count){
+ const pickup=item('Spare charges +'+count,x,.82,z,0x6bc8d6,entry=>{
+  state.reserveAmmo+=count;
+  remove(entry);update();say('Collected '+count+' reserve charges.');
+ },[.34,.18,.27]);
+ const caseModel=new T.Group();caseModel.position.copy(pickup.mesh.position);
+ box(caseModel,0,0,0,.34,.16,.26,0x394b54);
+ box(caseModel,0,.084,0,.344,.025,.264,0x6a8289);
+ for(const offset of [-.093,.093])box(caseModel,offset,.012,.133,.04,.055,.016,0x9ca9ad);
+ box(caseModel,0,.024,.136,.077,.025,.009,0x68b9bd,0x22595e);
+ world.add(caseModel);pickup.model=caseModel;pickup.mesh.material.visible=false;
+ box(world,x,.33,z,.49,.64,.42,0x485357);
+}
+for(const [x,z,count] of [[2.8,-8.2,24],[3.1,-19.5,24],[-5.5,-32.2,16],[29.2,3.25,24],[67,5.9,24]])chargeCache(x,z,count);
+for(let i=0;i<9;i++)chargeCache(98.8+i*32,5.4,24);
 function dressCampaign(){
  const parts=[],unit=new T.BoxGeometry(1,1,1),material=new T.MeshStandardMaterial({roughness:.85});
  const tmp=new T.Object3D(), tint=new T.Color();
@@ -916,7 +935,7 @@ function updateMovementPanel(){
 function refreshVR(){
  if(mode!=='immersive-vr')return;
  if(statusPlane){vrText.remove(statusPlane);statusPlane.material.map.dispose();statusPlane.material.dispose();statusPlane.geometry.dispose();}
- statusPlane=label(vrText,state.hp>0?chapters[state.step]+' · '+state.hp+' HP':'Trigger to retry',0,0,0,.84);
+ statusPlane=label(vrText,state.hp>0?chapters[state.step]+' · '+state.hp+' HP'+(state.gear==='Stun launcher'?' · '+state.ammo+'/'+state.reserveAmmo:''):'Trigger to retry',0,0,0,.84);
  statusPlane.material.depthTest=false;statusPlane.material.depthWrite=false;statusPlane.renderOrder=20;
 }
 function followHeadset(frame){
@@ -946,12 +965,18 @@ function tone(freq,duration,type='sine'){
  g.gain.setValueAtTime(.08,t);g.gain.exponentialRampToValueAtTime(.001,t+duration);o.connect(g).connect(audio.destination);o.start();o.stop(t+duration);
  }catch{}
 }
+function updateEnemyHealth(enemy){
+ const fraction=Math.max(0,Math.min(1,enemy.hp/enemy.max));
+ enemy.health.scale.x=Math.max(.001,fraction);
+ enemy.health.position.x=(fraction-1)*.35;
+ enemy.health.material.color.setHex(fraction>.5?0x83df9b:fraction>.25?0xf3cf69:0xeb746f);
+}
 function reset(){
  resetCart();teleportMarker.visible=false;uv.visible=false;b2Shutter.position.y=0;
- state={step:0,route:null,wardPursuit:false,clubEvidence:new Set(),hp:100,cash:0,rep:0,ammo:0,throwables:0,gear:'Empty hands',clues:[],nextAttack:0};
+ state={step:0,route:null,wardPursuit:false,clubEvidence:new Set(),hp:100,cash:0,rep:0,ammo:0,reserveAmmo:0,throwables:0,gear:'Empty hands',clues:[],nextAttack:0};
  yaw=pitch=0;rig.position.set(0,0,8.2);rig.rotation.set(0,0,0);camera.rotation.set(0,0,0);camera.position.set(0,mode==='immersive-vr'?0:1.63,0);
  for(const i of interact)showItem(i,true);
- for(const n of enemies){n.hp=n.max;n.next=0;n.g.position.set(n.x,0,n.z);n.g.visible=false;}
+ for(const n of enemies){n.hp=n.max;updateEnemyHealth(n);n.next=0;n.g.position.set(n.x,0,n.z);n.g.visible=false;}
  for(const s of shots){world.remove(s.mesh);s.mesh.geometry.dispose();s.mesh.material.dispose();}shots.length=0;
  update();say('Heart monitor. Burning lights. Nothing before 03:11.',7);
 }
@@ -962,7 +987,7 @@ function update(){
  const s=state.step;
  $('place').textContent='LEVEL '+(stageFor(s)+1)+' / 14 · '+campaign[stageFor(s)][0].toUpperCase();
  $('objective').textContent=state.hp>0?chapters[s]:'Coleman is down. Restart to try again.';
- $('stats').textContent=state.hp+' HP  /  $'+state.cash+'  /  REP '+state.rep+'  /  '+state.gear+'  /  '+state.ammo+' charges  /  '+state.throwables+' throws';
+ $('stats').textContent=state.hp+' HP  /  $'+state.cash+'  /  REP '+state.rep+'  /  '+state.gear+'  /  '+state.ammo+' loaded  /  '+state.reserveAmmo+' reserve  /  '+state.throwables+' throws';
  gates.forEach(g=>g.mesh.visible=s<g.step);
  refreshVR();
 }
@@ -1031,7 +1056,13 @@ function attack(controller,throwing=false){
  if(!state.hp||elapsed<state.nextAttack)return;
  const ranged=!throwing&&state.gear==='Stun launcher';
  if(throwing&&!state.throwables)return say('Pick up loose tools to throw.');
- if(ranged&&!state.ammo)return say('No stun charges. Press G to throw a tool.');
+ if(ranged&&!state.ammo){
+  const loaded=Math.min(24,state.reserveAmmo);
+  if(!loaded)return say('Out of charges. Find an ammo cache or throw a tool.');
+  state.ammo=loaded;state.reserveAmmo-=loaded;
+  state.nextAttack=elapsed+.45;
+  update();return say('Reloaded from reserve · '+loaded+' charges.');
+ }
  if(!throwing&&!ranged&&state.gear==='Empty hands')return say('Pick up the flashlight.');
  state.nextAttack=elapsed+(ranged?.22:.42);
  if(throwing)state.throwables--;if(ranged)state.ammo--;
@@ -1047,7 +1078,7 @@ function attack(controller,throwing=false){
  }
  tone(ranged?152:98,.13,'triangle');
  if(hit){
- const n=hit.n;if(n.kind==='mortician'&&!uv.visible){say('The Mortician shrugs it off. Restore the UV lights.');return update();}n.hp-=throwing?2:1;n.next=elapsed+.8;
+ const n=hit.n;if(n.kind==='mortician'&&!uv.visible){say('The Mortician shrugs it off. Restore the UV lights.');return update();}n.hp-=throwing?2:1;updateEnemyHealth(n);n.next=elapsed+.8;
  if(n.hp<=0){
  n.g.visible=false;state.cash+=n.kind==='orderly'||n.kind==='mortician'?250:40;state.rep++;
  if(n.kind==='orderly'){record(1);say('The Orderly drops his badge. The service lift is unlocked.');}
@@ -1505,7 +1536,7 @@ renderer.setAnimationLoop((time,frame)=>{
    n.g.visible=n.kind==='orderly'?state.step===2:n.kind==='doctor'?state.step<3&&Boolean(state.wardPursuit):n.kind==='zombie'?state.step>=3&&state.step<6&&z<-14:n.kind==='mortician'?state.step>=4&&state.step<6:n.kind==='velvet'?state.step===9:n.kind==='lateBoss'?state.step===n.encounter:state.step===11;
    if(!n.g.visible)continue;
    const p=n.g.position,dx=rig.position.x-p.x,dz=z-p.z,dist=Math.hypot(dx,dz);
-   n.g.rotation.y=Math.atan2(dx,dz);n.tag.rotation.y=-n.g.rotation.y;
+   n.g.rotation.y=Math.atan2(dx,dz);n.tag.rotation.y=0;
    if(dist>1.2){const speed=n.kind==='orderly'?2.03:n.kind==='mortician'?1.48:n.kind==='zombie'?1.18:n.kind==='velvet'?2.15:n.kind==='hound'?2.45:n.kind==='lateBoss'?n.pursuit:1.68;const step=dt*speed;
     if(wardObstacles&&(n.kind==='doctor'||n.kind==='orderly'))pursueInWard(n,dx/dist,dz/dist,step,wardObstacles);
     else{p.x+=dx/dist*step;p.z+=dz/dist*step;}}
