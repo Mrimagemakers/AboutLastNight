@@ -911,6 +911,27 @@ function dressCampaign(){
 
 }
 dressCampaign();
+
+const optionalEvidence=[];
+const fieldNotes=[[-2.22,7.32,"Nurse’s handover note","The night nurse crossed out the transfer order. In the margin: ‘Patient awake at 03:06. Do not move him again.’"],[3.7,-18.4,"Intake tag","One tag was printed twice, decades apart. Both copies carry the same name and the same emergency contact."],[5.62,-35.7,"Blue Hour bar receipt","Sienna ordered two coffees at closing. Mara circled the second cup and wrote ‘Trey.’"],[25.56,-2.5,"High Life guest list","Three names are crossed out. A transport code beside Trey’s name matches the B2 dispatch ticket."],[69.4,-7.85,"Tow dispatch log","The first tow was booked before the blackout. Someone knew which streets would be dark."],[6.3,4.18,"Courtyard outage notice","The power company authorized no work. A tenant wrote Isaiah’s address on the posted notice."],[6.87,-3.52,"Blank key envelope","In Isaiah’s handwriting: ‘Give this to the next tenant who needs a way out. Don’t put their name on the receipt.’"],[-5.3,4.22,"Maintenance timetable","The last trolley was listed as empty, but the conductor logged a full carriage at Greenwood."],[6.1,5.12,"Crypt rubbing","Someone scratched the oldest resident’s name off the stone. The hospital crest beneath it is still legible."],[5.89,5.94,"Mercer’s place card","A guest listed as ‘First Tenant’ was billed for a seat at every auction, whether they attended or not."],[5.1,5.1,"Safehouse inventory note","The house was photographed and furnished before Coleman’s name appeared on the deed."],[-5.9,4.85,"Red Archive routing slip","A record marked CLOSED can still be transferred to St. Orison. The destination field simply reads ‘below.’"],[5.2,5.5,"Vale’s bridge note","‘Coleman, if you remember one thing: I did not sign the last transfer.’"],[5.3,5.5,"Lower chamber roll call","The final sheet lists living prisoners separately. The last line reads: ‘Return them to the surface after first light.’"]];
+for(const [stage,[offset,z,title,copy]] of fieldNotes.entries()){
+ const x=stage<3?offset:stage<5?offset:96+(stage-5)*32+offset;
+ const heights=[.92,1.06,.77,.51,.51];
+ const y=heights[stage]??.94;
+ if(stage>=5)box(world,x,.42,z,.66,.82,.50,stage===3?0x5e454f:0x5b6059);
+ const entry=item(title,x,y,z,0xc6ab78,note=>{
+  if(stageFor(state.step)!==stage||state.notes.includes(stage))return;
+  state.notes.push(stage);remove(note);update();say(title+' · added to the Case File.');
+ },[.26,.15,.24]);
+ const prop=new T.Group();prop.position.copy(entry.mesh.position);prop.rotation.y=(stage%3-1)*.21;
+ box(prop,0,-.028,0,.22,.017,.30,0x57564d);
+ box(prop,-.012,-.015,0,.177,.012,.255,0xb7aa8a);
+ for(let line=0;line<5;line++)box(prop,-.018,-.007,-.075+line*.026,.094+line%2*.026,.002,.003,0x665f52);
+ box(prop,0,-.005,-.126,.068,.011,.028,0x7b8381);
+ world.add(prop);
+ entry.model=prop;entry.mesh.material.visible=false;
+ optionalEvidence.push({stage,entry,title,copy});
+}
 const vrText=new T.Group();rig.add(vrText);vrText.visible=false;
 const vrActions=label(vrText,'TRIGGER USE / ATTACK  ·  GRIP THROW',0,-.312,0,.74);
 const vrOptions=label(vrText,'X CHANGE MOVEMENT  ·  Y CHANGE TURN',0,-.206,0,.74);
@@ -973,7 +994,7 @@ function updateEnemyHealth(enemy){
 }
 function reset(){
  resetCart();teleportMarker.visible=false;uv.visible=false;b2Shutter.position.y=0;
- state={step:0,route:null,wardPursuit:false,clubEvidence:new Set(),hp:100,cash:0,rep:0,ammo:0,reserveAmmo:0,throwables:0,gear:'Empty hands',clues:[],nextAttack:0};
+ state={step:0,route:null,wardPursuit:false,clubEvidence:new Set(),hp:100,cash:0,rep:0,ammo:0,reserveAmmo:0,notes:[],throwables:0,gear:'Empty hands',clues:[],nextAttack:0};
  yaw=pitch=0;rig.position.set(0,0,8.2);rig.rotation.set(0,0,0);camera.rotation.set(0,0,0);camera.position.set(0,mode==='immersive-vr'?0:1.63,0);
  for(const i of interact)showItem(i,true);
  for(const n of enemies){n.hp=n.max;updateEnemyHealth(n);n.next=0;n.g.position.set(n.x,0,n.z);n.g.visible=false;}
@@ -985,6 +1006,7 @@ function setStep(step,message){state.step=step;update();say(message,7);}
 function say(message,seconds=4){$('line').textContent=message;toast=elapsed+seconds;}
 function update(){
  const s=state.step;
+ for(const note of optionalEvidence)showItem(note.entry,stageFor(s)===note.stage&&!state.notes.includes(note.stage));
  $('place').textContent='LEVEL '+(stageFor(s)+1)+' / 14 · '+campaign[stageFor(s)][0].toUpperCase();
  $('objective').textContent=state.hp>0?chapters[s]:'Coleman is down. Restart to try again.';
  $('stats').textContent=state.hp+' HP  /  $'+state.cash+'  /  REP '+state.rep+'  /  '+state.gear+'  /  '+state.ammo+' loaded  /  '+state.reserveAmmo+' reserve  /  '+state.throwables+' throws';
@@ -1104,7 +1126,16 @@ function journal(open,showCampaign=false){
    row.textContent=(index+1)+'. '+name+' · '+boss+status;
    return row;
   }));
- }else $('entries').replaceChildren(...(state.clues.length?state.clues.map(i=>{const row=document.createElement('p');row.textContent=clues[i];return row;}):[document.createTextNode('No evidence collected yet.')]));
+ }else{
+  const rows=state.clues.map(i=>clues[i]);
+  for(const index of state.notes){
+   const note=optionalEvidence[index];
+   rows.push(note.title+' · '+note.copy);
+  }
+  $('entries').replaceChildren(...(rows.length?rows.map(copy=>{
+   const row=document.createElement('p');row.textContent=copy;return row;
+  }):[document.createTextNode('No evidence collected yet.')]));
+ }
  }
  keys.clear();
 }
