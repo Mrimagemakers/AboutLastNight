@@ -3,7 +3,7 @@
 *{box-sizing:border-box}body{margin:0;background:#061016;color:#e9f9ff;font:15px system-ui;overflow:hidden;touch-action:none}canvas{display:block}button{font:inherit;font-weight:700;padding:11px 16px;color:#edfcff;background:#15313c;border:1px solid #6094a0;cursor:pointer}button:hover{background:#286074}#cover,#log{position:fixed;inset:0;z-index:4;display:grid;align-content:center;padding:8vw;background:linear-gradient(90deg,#020a11f5,#020a1120)}h1{font-size:clamp(56px,11vw,160px);line-height:.82;margin:0 0 24px;letter-spacing:-.075em}small{letter-spacing:.22em;color:#79e5e0}p{max-width:46ch;line-height:1.5}#hud{position:fixed;inset:0;pointer-events:none;padding:20px;display:none}#top{display:flex;gap:16px;justify-content:space-between}#top button,#touch button{pointer-events:auto}#objective{font-size:18px;font-weight:800}#stats,#hint{color:#9fe4e6}#cross{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:22px}#caption{position:absolute;bottom:15%;left:50%;transform:translateX(-50%);max-width:min(90%,660px);width:max-content;text-align:center;text-shadow:0 2px 4px #000;font-weight:700}#touch{display:none;position:absolute;bottom:2%;left:2%;right:2%;justify-content:space-between}#touch button{padding:12px}#log[hidden],#cover[hidden]{display:none}#log{background:#08151ef5}#notice{color:#ffbe82}@media(pointer:coarse){#touch{display:flex}#caption{bottom:19%}}
 #entries{max-height:55vh;overflow:auto} #entries p{margin:.5em 0} #top>div:last-child{display:flex;flex-wrap:wrap;gap:5px;align-content:start;justify-content:flex-end} @media(max-width:650px){#top button{font-size:11px;padding:6px}}
 </style>
-<div id="cover"><small>PENGAME PUBLISHING · THE HOLLOW LEGION</small><h1>ABOUT<br>LAST NIGHT</h1><p>04:17 AM. You wake up in a hospital room. Your wristband says D. Coleman. The two men outside your door know the rest. One is wearing your wristband.</p><p>Controller: press × (PlayStation) or A (Xbox) to start.</p><details><summary>Asset credits</summary><p>Hospital art by DNK_DEV. Zombie model by CatBorg Studio.</p></details><div><button id="start">Wake up</button> <button id="vr">Enter VR</button> <button id="ar">AR evidence</button></div><p id="notice" role="status"></p></div>
+<div id="cover"><small>PENGAME PUBLISHING · THE HOLLOW LEGION</small><h1>ABOUT<br>LAST NIGHT</h1><p>04:17 AM. You wake up in a hospital room. Your wristband says D. Coleman. The two men outside your door know the rest. One is wearing your wristband.</p><p>Controller: press × (PlayStation) or A (Xbox) to start.</p><details><summary>Asset credits</summary><p>Hospital art by DNK_DEV. Zombie model by CatBorg Studio. Animated hospital staff models supplied by PenGame Publishing.</p></details><div><button id="start">Wake up</button> <button id="vr">Enter VR</button> <button id="ar">AR evidence</button></div><p id="notice" role="status"></p></div>
 <div id="hud"><div id="top"><div><small id="place"></small><div id="objective"></div><div id="stats"></div></div><div><button id="campaign">Campaign</button> <button id="journal">Case file</button> <button id="restart">Restart</button></div></div><div id="cross">+</div><div id="caption"><div id="line"></div><div id="hint"></div></div><div id="touch"><div><button data-key="a">◀</button><button data-key="w">▲</button><button data-key="s">▼</button><button data-key="d">▶</button></div><div><button id="use">Use</button><button id="fire">Attack</button><button id="throw">Throw</button></div></div></div>
 <div id="log" hidden><small>D. COLEMAN</small><h2 id="logTitle">Case file</h2><div id="entries"></div><div><button id="close">Resume</button></div></div>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.179.1/examples/jsm/"}}</script>
@@ -676,6 +676,65 @@ async function installHospitalArt(){
  $('hospital-art').dataset.loaded=String(loaded);
 }
 installHospitalArt().catch(error=>console.warn('Hospital art unavailable:',error));
+const hospitalCharacters=[
+ {kind:'doctor',parts:['false-doctor-1'],coat:0xc9d2c9,trousers:0x3f5059,skin:0xaa8067,height:1.72},
+ {kind:'orderly',parts:['orderly-1'],coat:0xb8c8c5,trousers:0x2e3b46,skin:0xbd957b,height:1.82},
+ {kind:'mortician',parts:['mortician-1','mortician-2','mortician-3'],height:1.78}
+];
+function colorUntexturedUniform(model,character){
+ const coat=new T.Color(character.coat),trousers=new T.Color(character.trousers);
+ const skin=new T.Color(character.skin),shoe=new T.Color(0x22262c),hair=new T.Color(0x312724);
+ model.traverse(mesh=>{
+  if(!mesh.isMesh)return;
+  const positions=mesh.geometry.getAttribute('position');
+  const colors=new Float32Array(positions.count*3);
+  const tone=new T.Color();
+  for(let i=0;i<positions.count;i++){
+   const x=positions.getX(i),y=positions.getY(i);
+   const color=y<.13?shoe:y<.74?trousers:y>1.59?hair:y>1.39||Math.abs(x)>.29&&y<1.14?skin:coat;
+   tone.copy(color).multiplyScalar(.94+.06*Math.sin(x*92+y*71));
+   tone.toArray(colors,i*3);
+  }
+  mesh.geometry.setAttribute('color',new T.BufferAttribute(colors,3));
+  mesh.material=new T.MeshStandardMaterial({vertexColors:true,roughness:.86});
+ });
+}
+async function installHospitalCharacters(){
+ const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js');
+ const loader=new GLTFLoader();
+ await Promise.allSettled(hospitalCharacters.map(async character=>{
+  try{
+   const modules=await Promise.all(character.parts.map(part=>import('./assets/hospital/'+part+'.js')));
+   const packed=Uint8Array.from(atob(modules.map(module=>module.default).join('')),c=>c.charCodeAt(0));
+   const stream=new Blob([packed]).stream().pipeThrough(new DecompressionStream('gzip'));
+   const asset=await loader.parseAsync(await new Response(stream).arrayBuffer(),'');
+   const enemy=enemies.find(n=>n.kind===character.kind);
+   const model=asset.scene;
+   if(character.coat)colorUntexturedUniform(model,character);
+   const bounds=new T.Box3().setFromObject(model);
+   const size=bounds.getSize(new T.Vector3()),center=bounds.getCenter(new T.Vector3());
+   if(!(size.y>.01&&Number.isFinite(size.y)))throw Error('Character has invalid bounds');
+   const pivot=new T.Group();pivot.scale.setScalar(character.height/size.y);
+   pivot.add(model);model.position.sub(new T.Vector3(center.x,bounds.min.y,center.z));
+   const mixer=new T.AnimationMixer(model);
+   const walkClip=asset.animations.find(clip=>/walking/i.test(clip.name));
+   const runClip=asset.animations.find(clip=>/running/i.test(clip.name));
+   const walk=walkClip?mixer.clipAction(walkClip):null,run=runClip?mixer.clipAction(runClip):null;
+   enemy.g.add(pivot);enemy.characterMotion={mixer,walk,run,active:null};
+   for(const original of enemy.placeholder)original.visible=false;
+   document.documentElement.dataset[character.kind+'Model']='ready';
+  }catch(error){console.warn('Hospital character fallback for '+character.kind,error);}
+ }));
+}
+function animateHospitalCharacter(enemy,distance,dt){
+ const motion=enemy.characterMotion;
+ if(!motion)return;
+ const next=distance>2.8&&enemy.kind!=='mortician'?(motion.run||motion.walk):motion.walk||motion.run;
+ if(next&&next!==motion.active){motion.active?.stop();next.reset().play();motion.active=next;}
+ if(next)next.paused=distance<=1.2;
+ motion.mixer.update(dt);
+}
+installHospitalCharacters().catch(error=>console.warn('Animated hospital models unavailable',error));
 renderer.setAnimationLoop(()=>{
  const dt=Math.min(.05,clock.getDelta());elapsed+=dt;
  const padMove=pollController(dt);
@@ -706,6 +765,7 @@ renderer.setAnimationLoop(()=>{
    n.g.rotation.y=Math.atan2(dx,dz);n.tag.rotation.y=-n.g.rotation.y;
    if(dist>1.2){const speed=n.kind==='orderly'?2.03:n.kind==='mortician'?1.48:n.kind==='zombie'?1.18:n.kind==='velvet'?2.15:n.kind==='hound'?2.45:1.68;p.x+=dx/dist*dt*speed;p.z+=dz/dist*dt*speed;}
    const gait=dist>1.2?Math.sin(elapsed*9)*.55:0;n.legs[0].rotation.x=gait;n.legs[1].rotation.x=-gait;n.arms[0].rotation.x=-gait;n.arms[1].rotation.x=gait;
+   animateHospitalCharacter(n,dist,dt);
    if(n.unityModel){n.unityModel.rotation.z=gait*.11;n.unityModel.rotation.x=.11+gait*.07;n.unityModel.position.y=Math.abs(gait)*.055;}
    if(dist<1.65&&elapsed>n.next){n.next=elapsed+1.12;state.hp=Math.max(0,state.hp-(n.kind==='mortician'?17:n.kind==='orderly'?13:9));tone(55,.16,'triangle');update();}
   }
