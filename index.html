@@ -70,9 +70,13 @@ function lamp(x,y,z,c,power=24){
 function item(name,x,y,z,color,act,shape=[.44,.24,.32]){
  const mesh=box(world,x,y,z,...shape,color,color);
  const tag=label(world,name,x,y+.47,z,1.48);
- const entry={name,mesh,tag,act};interact.push(entry);return entry;
+ const entry={name,mesh,tag,act,model:null};interact.push(entry);return entry;
 }
-function remove(entry){entry.mesh.visible=entry.tag.visible=false;}
+function showItem(entry,visible){
+ entry.mesh.visible=entry.tag.visible=visible;
+ if(entry.model)entry.model.visible=visible;
+}
+function remove(entry){showItem(entry,false);}
 function rounded(parent,material,x,y,z,w,h,d){
  const mesh=new T.Mesh(new T.SphereGeometry(1,16,12),material);
  mesh.position.set(x,y,z);mesh.scale.set(w,h,d);parent.add(mesh);return mesh;
@@ -436,12 +440,92 @@ actor('Velvet',32,-8.2,0x66284b,7,'velvet');
 actor('The Towman',64,-8.4,0x62664e,9,'towman');
 actor('Legion hound',61.5,-7.1,0x444047,2,'hound');
 actor('Legion hound',66.5,-7.1,0x403847,2,'hound');
-const vrText=new T.Group();rig.add(vrText);vrText.position.set(0,2.28,-1.75);vrText.visible=false;
-let statusPlane;
+
+function equipment(kind){
+ const g=new T.Group();
+ const metal=new T.MeshStandardMaterial({color:0x535f65,metalness:.68,roughness:.39});
+ const black=new T.MeshStandardMaterial({color:0x283139,roughness:.72});
+ const lens=new T.MeshStandardMaterial({color:0xc2e6f0,emissive:0x365767,roughness:.21});
+ function cylinder(x,y,z,rt,rb,length,material){
+  const mesh=new T.Mesh(new T.CylinderGeometry(rt,rb,length,24),material);
+  mesh.position.set(x,y,z);mesh.rotation.x=Math.PI/2;g.add(mesh);return mesh;
+ }
+ if(kind==='flashlight'){
+  cylinder(0,0,.035,.041,.041,.245,black);
+  cylinder(0,0,-.112,.066,.043,.08,metal);
+  cylinder(0,0,-.154,.061,.061,.014,metal);
+  cylinder(0,0,-.164,.049,.049,.006,lens);
+  cylinder(0,0,.165,.044,.044,.022,metal);
+  for(let n=0;n<14;n++)cylinder(0,0,-.039+n*.011,.043,.043,.004,metal);
+  box(g,0,.044,-.047,.031,.011,.043,0x485e64);
+ }else if(kind==='stun'){
+  box(g,0,.015,-.037,.091,.079,.23,0x464e57);
+  box(g,0,.052,-.038,.082,.024,.224,0xe2ad4b);
+  const grip=box(g,0,-.072,.027,.058,.133,.066,0x292e34);
+  grip.rotation.x=-.21;
+  for(let n=0;n<5;n++)box(g,0,-.043-n*.019,.061-n*.004,.059,.007,.014,0x52545a);
+  box(g,0,.015,-.159,.084,.054,.027,0x222933);
+  for(const x of [-.025,.025])cylinder(x,.021,-.175,.01,.01,.017,lens);
+  box(g,0,.069,.013,.041,.006,.027,0x6bbfc0,0x265e60);
+ }else if(kind==='tools'){
+  box(g,0,-.04,0,.36,.031,.237,0x6f7b83).material=metal;
+  for(const x of [-.17,.17])box(g,x,-.02,0,.024,.045,.237,0x647078);
+  for(const z of [-.11,.11])box(g,0,-.02,z,.35,.045,.019,0x647078);
+  cylinder(-.09,.01,0,.014,.014,.167,metal);
+  cylinder(-.09,.01,.062,.027,.026,.09,black);
+  const wrench=box(g,.055,.012,0,.035,.019,.17,0x9da7ab);wrench.material=metal;wrench.rotation.y=-.23;
+  const head=new T.Mesh(new T.TorusGeometry(.028,.009,8,16,Math.PI*1.67),metal);
+  head.rotation.x=Math.PI/2;head.position.set(.074,.018,-.086);g.add(head);
+ }else if(kind==='medical'){
+  box(g,0,-.015,0,.29,.10,.20,0xb8c5c2);
+  box(g,0,.035,0,.30,.025,.208,0xcbd3cb);
+  box(g,0,.051,0,.116,.008,.037,0xae4145);
+  box(g,0,.051,0,.037,.008,.113,0xae4145);
+  for(const x of [-.087,.087])box(g,x,.008,.106,.031,.034,.009,0x657875);
+ }else if(kind==='wristband'){
+  const band=new T.Mesh(new T.RingGeometry(.045,.064,24),new T.MeshStandardMaterial({color:0xdde4db,side:T.DoubleSide,roughness:.74}));
+  band.rotation.x=-Math.PI/2;band.scale.y=.65;g.add(band);
+  box(g,0,.004,.025,.124,.009,.041,0xe6e8df);
+  for(let n=0;n<8;n++)box(g,-.031+n*.008,.01,.025,.002,.001,.016,0x37434a);
+ }
+ return g;
+}
+function dressPickup(name,kind){
+ const item=interact.find(entry=>entry.name===name);
+ if(!item)return;
+ const model=equipment(kind);model.position.copy(item.mesh.position);
+ if(kind==='flashlight')model.rotation.y=-.43;
+ world.add(model);item.model=model;
+ // The existing interaction volume remains raycastable.
+ item.mesh.material.visible=false;
+ item.tag.position.y=item.mesh.position.y+.22;
+}
+item('First aid kit',2.32,1.04,-3.75,0xc5ddd3,entry=>{
+ if(state.hp>=100)return say('Health is already full.');
+ state.hp=Math.min(100,state.hp+35);remove(entry);update();say('First aid applied.');
+});
+for(const [name,kind] of [['Wristband','wristband'],['Steel flashlight','flashlight'],['Spare tools','tools'],['Stun launcher','stun'],['First aid kit','medical']])dressPickup(name,kind);
+const vrText=new T.Group();rig.add(vrText);vrText.visible=false;
+const vrControls=label(vrText,'LEFT STICK MOVE    ·    RIGHT STICK TURN',0,-.105,0,.69);
+const vrActions=label(vrText,'TRIGGER USE / ATTACK     ·     GRIP THROW',0,-.208,0,.69);
+const vrPosition=new T.Vector3(),vrFacing=new T.Quaternion();
+let statusPlane, snapDirection=0;
+for(const panel of [vrControls,vrActions]){
+ panel.material.depthTest=false;panel.material.depthWrite=false;panel.renderOrder=20;
+}
 function refreshVR(){
  if(mode!=='immersive-vr')return;
  if(statusPlane){vrText.remove(statusPlane);statusPlane.material.map.dispose();statusPlane.material.dispose();statusPlane.geometry.dispose();}
- statusPlane=label(vrText,state.hp>0?chapters[state.step]+' · '+state.hp+' HP':'Trigger to retry',0,0,0,2.4);
+ statusPlane=label(vrText,state.hp>0?chapters[state.step]+' · '+state.hp+' HP':'Trigger to retry',0,0,0,.84);
+ statusPlane.material.depthTest=false;statusPlane.material.depthWrite=false;statusPlane.renderOrder=20;
+}
+function followHeadset(){
+ const view=renderer.xr.getCamera();
+ view.getWorldPosition(vrPosition);view.getWorldQuaternion(vrFacing);
+ rig.worldToLocal(vrPosition);
+ vrFacing.premultiply(rig.quaternion.clone().invert());
+ vrText.position.set(0,.26,-1.68).applyQuaternion(vrFacing).add(vrPosition);
+ vrText.quaternion.copy(vrFacing);
 }
 const arRelic=new T.Group();arWorld.add(arRelic);
 box(arRelic,0,0,0,.27,.15,.032,0x53d8d3,0x12605e);
@@ -466,7 +550,7 @@ function reset(){
  resetCart();uv.visible=false;b2Shutter.position.y=0;
  state={step:0,route:null,clubEvidence:new Set(),hp:100,cash:0,rep:0,ammo:0,throwables:0,gear:'Empty hands',clues:[],nextAttack:0};
  yaw=pitch=0;rig.position.set(0,0,8.2);rig.rotation.set(0,0,0);camera.rotation.set(0,0,0);camera.position.set(0,mode==='immersive-vr'?0:1.63,0);
- for(const i of interact)i.mesh.visible=i.tag.visible=true;
+ for(const i of interact)showItem(i,true);
  for(const n of enemies){n.hp=n.max;n.next=0;n.g.position.set(n.x,0,n.z);n.g.visible=false;}
  for(const s of shots){world.remove(s.mesh);s.mesh.geometry.dispose();s.mesh.material.dispose();}shots.length=0;
  update();say('Heart monitor. Burning lights. Nothing before 03:11.',7);
@@ -580,10 +664,20 @@ for(const b of document.querySelectorAll('[data-key]')){
  b.onpointerdown=e=>{b.setPointerCapture(e.pointerId);keys.add(b.dataset.key);};
  b.onpointerup=b.onpointercancel=b.onlostpointercapture=()=>keys.delete(b.dataset.key);
 }
+const handVisuals=[];
 for(let i=0;i<2;i++){
  const c=renderer.xr.getController(i);rig.add(c);
+ const beam=new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(),new T.Vector3(0,0,-2.8)]),new T.LineBasicMaterial({color:0x75e5de,transparent:true,opacity:.72}));
+ beam.visible=false;c.add(beam);
+ const grip=renderer.xr.getControllerGrip(i);rig.add(grip);
+ const flash=equipment('flashlight'),stun=equipment('stun');
+ for(const model of [flash,stun]){model.position.set(0,.03,-.06);model.scale.setScalar(.8);model.visible=false;grip.add(model);}
+ const hand={source:null,beam,flash,stun};handVisuals.push(hand);
+ c.addEventListener('connected',event=>{hand.source=event.data;});
+ c.addEventListener('disconnected',()=>{hand.source=null;beam.visible=flash.visible=stun.visible=false;});
  c.addEventListener('select',()=>{
   if(mode==='immersive-ar')return arNext(c);
+  if(mode!=='immersive-vr')return;
   if(!state.hp)return reset();
   aim(c);const item=target();if(item)item.act(item);else attack(c);
  });
@@ -622,7 +716,7 @@ async function xr(requested){
   session.addEventListener('end',()=>{
    ended=true;mode='';arWorld.visible=false;world.visible=true;vrText.visible=false;
    if(ar)rig.position.copy(previous);
-   camera.position.set(0,1.63,0);camera.rotation.set(pitch,yaw,0,'YXZ');
+   rig.rotation.y=0;camera.position.set(0,1.63,0);camera.rotation.set(pitch,yaw,0,'YXZ');
    if(ar||!running){$('cover').hidden=wasRunning;$('hud').style.display=wasRunning?'block':'none';}
   },{once:true});
   renderer.xr.setReferenceSpaceType(referenceType);
@@ -640,7 +734,7 @@ async function xr(requested){
    world.visible=false;arWorld.visible=true;arPlaced=false;arIndex=0;arRelic.visible=false;
    rig.position.set(0,0,0);$('cover').hidden=true;$('hud').style.display='none';
   }else{
-   vrText.position.y=2.28;
+   snapDirection=0;
    journal(false);vrText.visible=true;
    if(!running)start();else update();
   }
@@ -901,10 +995,19 @@ renderer.setAnimationLoop(()=>{
   if(padMove){side+=padMove.x;forward-=padMove.y;}
   let heading=yaw;
   if(mode==='immersive-vr'){
-   const input=Array.from(session?.inputSources||[]).find(s=>s.handedness==='left')||Array.from(session?.inputSources||[])[0];
-   const axes=input?.gamepad?.axes||[];
-   side=axes.length>=4?axes[2]:axes[0]||0;forward=-(axes.length>=4?axes[3]:axes[1]||0);
-   const direction=new T.Vector3();renderer.xr.getCamera().getWorldDirection(direction);heading=Math.atan2(-direction.x,-direction.z);
+   const sources=Array.from(session?.inputSources||[]).filter(source=>source.gamepad?.axes.length>=2);
+   const left=sources.find(source=>source.handedness==='left');
+   const right=sources.find(source=>source.handedness==='right');
+   const movement=(left||sources[0])?.gamepad?.axes||[];
+   const stick=readStick(movement,movement.length>=4?2:0);
+   side=stick.x;forward=-stick.y;
+   const turning=left&&right?right.gamepad.axes:[];
+   const turn=turning[turning.length>=4?2:0]||0;
+   if(Math.abs(turn)<.3)snapDirection=0;
+   if(Math.abs(turn)>.65&&!snapDirection){snapDirection=Math.sign(turn);rig.rotation.y-=snapDirection*Math.PI/6;}
+   const direction=new T.Vector3();
+   renderer.xr.getCamera().getWorldDirection(direction);
+   heading=Math.atan2(-direction.x,-direction.z);
   }
   if(Math.hypot(side,forward)>(mode?.17:.001)){
    const scale=dt*(mode?2.6:4.1)/Math.max(1,Math.hypot(side,forward));
@@ -930,6 +1033,14 @@ renderer.setAnimationLoop(()=>{
   }
   if(!mode){aim();const item=target();$('hint').textContent=item?(controllerIndex===null?'E / USE':'× / A · USE')+' · '+item.name:'';}
   if(elapsed>toast)$('line').textContent='';
+ }
+ if(mode==='immersive-vr')followHeadset();
+ const dominant=handVisuals.find(hand=>hand.source?.handedness==='right')||handVisuals.find(hand=>hand.source?.targetRayMode==='tracked-pointer');
+ for(const hand of handVisuals){
+  const active=mode==='immersive-vr'&&hand.source?.targetRayMode==='tracked-pointer';
+  hand.beam.visible=Boolean(active);
+  hand.flash.visible=Boolean(active&&hand===dominant&&state.gear==='Flashlight');
+  hand.stun.visible=Boolean(active&&hand===dominant&&state.gear==='Stun launcher');
  }
  renderer.render(scene,camera);
 });
