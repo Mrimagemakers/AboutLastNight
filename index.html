@@ -168,6 +168,88 @@ label(world,'SERVICE LIFT',0,2.74,-12.8,3.3);
 label(world,'BELOW INTAKE',0,2.75,-15,4);
 label(world,'THE BLUE HOUR',0,2.76,-29.2,4.5);
 label(world,'VR · STICK MOVE · TRIGGER USE / ATTACK',0,2.46,5,3.9);
+
+function buildPatientRoom(){
+ const steel=new T.MeshStandardMaterial({color:0x869298,metalness:.77,roughness:.29});
+ const rubber=new T.MeshStandardMaterial({color:0x262a31,roughness:.92});
+ const ivory=0xc4c9c2;
+ function tube(x,y,z,top,bottom,height,material){
+  const mesh=new T.Mesh(new T.CylinderGeometry(top,bottom,height,16),material);
+  mesh.position.set(x,y,z);world.add(mesh);return mesh;
+ }
+ // IV stand and saline line, set behind the wristband interaction.
+ const ix=-2.54,iz=10.13;
+ tube(ix,1.13,iz,.018,.025,2.18,steel);
+ for(let i=0;i<4;i++){
+  const angle=i*Math.PI/2;
+  const leg=box(world,ix+Math.sin(angle)*.15,.1,iz+Math.cos(angle)*.15,.048,.038,.32,0x8c9699);
+  leg.rotation.y=angle;
+  const wheel=tube(ix+Math.sin(angle)*.3,.05,iz+Math.cos(angle)*.3,.043,.043,.027,rubber);
+  wheel.rotation.z=Math.PI/2;
+ }
+ box(world,ix,2.2,iz,.42,.023,.03,0x9fa9aa);
+ const saline=box(world,ix+.17,1.96,iz,.135,.32,.05,0xd2e2df);
+ saline.material.roughness=.32;
+ box(world,ix+.17,1.93,iz-.026,.095,.10,.008,0xe5e7db);
+ tube(ix+.17,1.77,iz,.021,.021,.06,steel);
+ const drip=new T.CatmullRomCurve3([
+  new T.Vector3(ix+.17,1.75,iz),new T.Vector3(ix+.16,1.53,iz),
+  new T.Vector3(ix+.28,1.25,iz-.05),new T.Vector3(-1.93,.93,9.41)
+ ]);
+ world.add(new T.Mesh(new T.TubeGeometry(drip,18,.005,5,false),mat(0xaebfc5)));
+ // Wall headboard, gas outlets and call panel.
+ box(world,-1.43,1.38,12.62,2.62,.38,.14,ivory);
+ box(world,-1.43,1.53,12.54,2.56,.028,.023,0x7c9595);
+ for(const [i,color] of [0x547a63,0x8e753e,0x576b86].entries()){
+  const x=-2.14+i*.35;
+  const outlet=tube(x,1.36,12.53,.061,.061,.03,mat(color));outlet.rotation.x=Math.PI/2;
+  const socket=tube(x,1.36,12.509,.025,.025,.02,rubber);socket.rotation.x=Math.PI/2;
+ }
+ box(world,-.35,1.41,12.5,.13,.208,.047,0xd4d8cd);
+ box(world,-.35,1.455,12.473,.046,.043,.009,0xcc534c,0x5b2925);
+ // Monitor on the right, clear of the flashlight table.
+ const mx=2.38,mz=9.96;
+ tube(mx,.57,mz,.036,.045,1.08,steel);
+ box(world,mx,.071,mz,.62,.08,.49,0x57646a);
+ box(world,mx,1.26,mz,.64,.45,.21,0x737f84);
+ box(world,mx,1.26,mz-.112,.59,.38,.023,0x182228);
+ const screen=document.createElement('canvas');screen.width=512;screen.height=256;
+ const ctx=screen.getContext('2d');
+ ctx.fillStyle='#081b21';ctx.fillRect(0,0,512,256);
+ ctx.strokeStyle='#15383b';ctx.lineWidth=1;
+ for(let i=0;i<512;i+=16){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,256);ctx.stroke();}
+ for(let i=0;i<256;i+=16){ctx.beginPath();ctx.moveTo(0,i);ctx.lineTo(512,i);ctx.stroke();}
+ ctx.strokeStyle='#62db9c';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(13,108);
+ for(let x=13;x<354;x+=4){
+  const p=x%94;
+  const pulse=p<25?Math.sin(p/25*Math.PI)*8:p<34?-(p-25)*6:p<43?-54+(p-34)*9:p<56?27-(p-43)*2:0;
+  ctx.lineTo(x,108+pulse);
+ }
+ ctx.stroke();
+ ctx.fillStyle='#90f3af';ctx.font='bold 58px monospace';ctx.fillText('78',373,113);
+ ctx.font='22px monospace';ctx.fillText('ECG',20,40);
+ ctx.fillStyle='#66dbee';ctx.fillText('SpO2  97%',22,195);ctx.fillText('119/76',311,195);
+ const texture=new T.CanvasTexture(screen);texture.colorSpace=T.SRGBColorSpace;
+ const display=new T.Mesh(new T.PlaneGeometry(.546,.335),new T.MeshBasicMaterial({map:texture,side:T.DoubleSide}));
+ display.position.set(mx,1.27,mz-.128);world.add(display);
+ for(let i=0;i<5;i++)box(world,mx-.2+i*.092,1.055,mz-.123,.031,.02,.009,0x779b8d);
+ // Bedside storage, privacy curtain and a marked patient chart.
+ box(world,-2.48,.42,7.33,.52,.82,.48,0x9ca69f);
+ box(world,-2.48,.85,7.33,.56,.067,.52,0xaab7b2);
+ for(const y of [.25,.52,.72]){
+  box(world,-2.48,y,7.081,.48,.17,.028,0xa9b2a9);
+  box(world,-2.48,y+.026,7.053,.16,.02,.031,0x54666b);
+ }
+ box(world,-2.52,.91,7.35,.19,.032,.21,0xbcb4a3).rotation.y=.13;
+ box(world,2.53,2.94,9.05,.055,.055,3.1,0x9ca5a3);
+ for(let i=0;i<13;i++){
+  const fold=box(world,2.66+(i%2)*.04,1.81,10.45-i*.071,.061,1.97,.095,i%2?0x678d85:0x789b91);
+  fold.material.roughness=.98;
+ }
+ const card=label(world,'408 · PATIENT ROOM',0,2.29,3.63,2.2);
+ card.material.depthWrite=false;
+}
+buildPatientRoom();
 for(const x of [-7.5,7.5])for(const z of [-17,-20,-23,-25]){
  for(let y=.42;y<2.55;y+=.62){
   box(world,x,y,z,.82,.58,1.55,0x62717b);
@@ -681,22 +763,40 @@ const hospitalCharacters=[
  {kind:'orderly',parts:['orderly-1'],coat:0xb8c8c5,trousers:0x2e3b46,skin:0xbd957b,height:1.82},
  {kind:'mortician',parts:['mortician-1','mortician-2','mortician-3'],height:1.78}
 ];
-function colorUntexturedUniform(model,character){
- const coat=new T.Color(character.coat),trousers=new T.Color(character.trousers);
- const skin=new T.Color(character.skin),shoe=new T.Color(0x22262c),hair=new T.Color(0x312724);
+function textureHospitalStaff(model,character){
+ const cloth=new T.Color(character.coat),trousers=new T.Color(character.trousers);
+ const skin=new T.Color(character.skin),boots=new T.Color(0x292e31),hair=new T.Color(0x302823);
+ const seam=new T.Color(0x5d6d6e),stain=new T.Color(0x655048);
+ const warmSkin=new T.Color(0xaf7267),badge=new T.Color(0xaec2d0);
  model.traverse(mesh=>{
   if(!mesh.isMesh)return;
   const positions=mesh.geometry.getAttribute('position');
-  const colors=new Float32Array(positions.count*3);
+  const rgb=new Float32Array(positions.count*3);
   const tone=new T.Color();
   for(let i=0;i<positions.count;i++){
-   const x=positions.getX(i),y=positions.getY(i);
-   const color=y<.13?shoe:y<.74?trousers:y>1.59?hair:y>1.39||Math.abs(x)>.29&&y<1.14?skin:coat;
-   tone.copy(color).multiplyScalar(.94+.06*Math.sin(x*92+y*71));
-   tone.toArray(colors,i*3);
+   const x=positions.getX(i),y=positions.getY(i),z=positions.getZ(i);
+   const hand=Math.abs(x)>.275&&y<1.15&&y>.80;
+   const face=y>1.40&&y<1.635;
+   if(face||hand){
+    const mottling=.09+.13*Math.pow(Math.sin(55*x+22*y)*Math.cos(34*z-25*y),2);
+    tone.copy(skin).lerp(warmSkin,mottling).multiplyScalar(.9+.14*Math.sin(22*y+18*z)**2);
+   }else if(y>=1.635){
+    tone.copy(hair).multiplyScalar(.81+.3*Math.sin(123*x+19*z)**2);
+   }else if(y<.14){
+    tone.copy(boots).multiplyScalar(.82+.19*Math.cos(50*z)**2);
+   }else{
+    const isCoat=y>.74;
+    const rib=.91+.11*Math.sin(x*133+y*67+z*52)**2;
+    const wrinkle=.91+.10*Math.sin(28*y+5*Math.sin(x*21)+13*z)**2;
+    const dirty=Math.max(0,.32-Math.abs(y-.79))*1.1*Math.sin(19*x+31*z)**2;
+    tone.copy(isCoat?cloth:trousers).multiplyScalar(rib*wrinkle).lerp(stain,dirty);
+    if(isCoat&&Math.abs(x)<.028&&z>.064)tone.lerp(seam,.62);
+    if(isCoat&&x>.075&&x<.16&&y>1.20&&y<1.31&&z>.07)tone.lerp(badge,.8);
+   }
+   tone.toArray(rgb,i*3);
   }
-  mesh.geometry.setAttribute('color',new T.BufferAttribute(colors,3));
-  mesh.material=new T.MeshStandardMaterial({vertexColors:true,roughness:.86});
+  mesh.geometry.setAttribute('color',new T.BufferAttribute(rgb,3));
+  mesh.material=new T.MeshStandardMaterial({vertexColors:true,roughness:.79});
  });
 }
 async function installHospitalCharacters(){
@@ -710,7 +810,16 @@ async function installHospitalCharacters(){
    const asset=await loader.parseAsync(await new Response(stream).arrayBuffer(),'');
    const enemy=enemies.find(n=>n.kind===character.kind);
    const model=asset.scene;
-   if(character.coat)colorUntexturedUniform(model,character);
+   if(character.coat)textureHospitalStaff(model,character);
+   else model.traverse(mesh=>{
+    if(!mesh.isMesh)return;
+    for(const material of Array.isArray(mesh.material)?mesh.material:[mesh.material]){
+     if(!material?.isMeshStandardMaterial)continue;
+     material.roughness=Math.max(.8,material.roughness);
+     material.metalness=Math.min(.12,material.metalness);
+     if(material.normalMap)material.normalScale.set(.72,.72);
+    }
+   });
    const bounds=new T.Box3().setFromObject(model);
    const size=bounds.getSize(new T.Vector3()),center=bounds.getCenter(new T.Vector3());
    if(!(size.y>.01&&Number.isFinite(size.y)))throw Error('Character has invalid bounds');
