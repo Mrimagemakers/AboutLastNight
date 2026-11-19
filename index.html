@@ -299,7 +299,8 @@ item('Spare tools',-1.8,1.06,-5.6,0xdeac69,e=>{state.throwables+=6;remove(e);upd
 item('Stun launcher',1.7,1,-8,0x58a5d2,e=>{state.gear='Stun launcher';state.ammo+=24;remove(e);update();say('Stun launcher picked up.');});
 item('Service lift panel',0,1.18,-12,0x4addbd,e=>{
  if(state.step<2)return say('Get farther into the ward.');
- if(!state.clues.includes(1))return say('The Orderly has the lift credentials.');
+ if(enemies.some(enemy=>enemy.kind==='orderly'&&enemy.hp>0))return say('Defeat the Orderly to unlock the lift.');
+ record(1);
  remove(e);state.hp=100;state.ammo=Math.max(state.ammo,20);state.gear='Stun launcher';
  setStep(3,'BELOW INTAKE. Find the original report.'); 
 });
@@ -654,7 +655,7 @@ function tone(freq,duration,type='sine'){
 }
 function reset(){
  resetCart();teleportMarker.visible=false;uv.visible=false;b2Shutter.position.y=0;
- state={step:0,route:null,clubEvidence:new Set(),hp:100,cash:0,rep:0,ammo:0,throwables:0,gear:'Empty hands',clues:[],nextAttack:0};
+ state={step:0,route:null,wardPursuit:false,clubEvidence:new Set(),hp:100,cash:0,rep:0,ammo:0,throwables:0,gear:'Empty hands',clues:[],nextAttack:0};
  yaw=pitch=0;rig.position.set(0,0,8.2);rig.rotation.set(0,0,0);camera.rotation.set(0,0,0);camera.position.set(0,mode==='immersive-vr'?0:1.63,0);
  for(const i of interact)showItem(i,true);
  for(const n of enemies){n.hp=n.max;n.next=0;n.g.position.set(n.x,0,n.z);n.g.visible=false;}
@@ -675,6 +676,16 @@ function update(){
 const movementObstacles=()=>solids.concat(gates.filter(g=>g.mesh.visible));
 function blockedAt(x,z,obstacles){
  return obstacles.some(o=>Math.abs(x-o.x)<o.w/2+.26&&Math.abs(z-o.z)<o.d/2+.26);
+}
+function pursueInWard(enemy,x,z,step,obstacles){
+ const p=enemy.g.position;
+ // Try the direct path, then steer around a cart or door frame.
+ const angles=[0,Math.PI/4,-Math.PI/4,Math.PI/2,-Math.PI/2];
+ for(const angle of angles){
+  const nextX=p.x+step*(x*Math.cos(angle)-z*Math.sin(angle));
+  const nextZ=p.z+step*(x*Math.sin(angle)+z*Math.cos(angle));
+  if(!blockedAt(nextX,nextZ,obstacles)){p.x=nextX;p.z=nextZ;return;}
+ }
 }
 function move(dx,dz){
  const obstacles=movementObstacles();
@@ -1038,6 +1049,20 @@ const hospitalCharacters=[
  {kind:'orderly',parts:['orderly-1'],coat:0xb8c8c5,trousers:0x2e3b46,skin:0xbd957b,height:1.82},
  {kind:'mortician',parts:['mortician-1','mortician-2','mortician-3'],height:1.78}
 ];
+function uniformWeave(){
+ const size=64,values=new Uint8Array(size*size*4);
+ for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+  const i=(y*size+x)*4;
+  const warp=Math.cos(x*Math.PI/2),weft=Math.cos(y*Math.PI/2);
+  values[i]=values[i+1]=values[i+2]=Math.round(127+18*warp+12*weft+4*warp*weft);
+  values[i+3]=255;
+ }
+ const map=new T.DataTexture(values,size,size);
+ map.wrapS=map.wrapT=T.RepeatWrapping;map.repeat.set(9,9);
+ map.magFilter=T.LinearFilter;map.minFilter=T.LinearMipmapLinearFilter;
+ map.generateMipmaps=true;map.needsUpdate=true;return map;
+}
+let hospitalWeave;
 function textureHospitalStaff(model,character){
  const cloth=new T.Color(character.coat),trousers=new T.Color(character.trousers);
  const skin=new T.Color(character.skin),boots=new T.Color(0x292e31),hair=new T.Color(0x302823);
@@ -1053,7 +1078,7 @@ function textureHospitalStaff(model,character){
    const hand=Math.abs(x)>.275&&y<1.15&&y>.80;
    const face=y>1.40&&y<1.635;
    if(face||hand){
-    const mottling=.09+.13*Math.pow(Math.sin(55*x+22*y)*Math.cos(34*z-25*y),2);
+    const mottling=.045+.10*Math.pow(Math.sin(55*x+22*y)*Math.cos(34*z-25*y),2);
     tone.copy(skin).lerp(warmSkin,mottling).multiplyScalar(.9+.14*Math.sin(22*y+18*z)**2);
    }else if(y>=1.635){
     tone.copy(hair).multiplyScalar(.81+.3*Math.sin(123*x+19*z)**2);
@@ -1062,17 +1087,31 @@ function textureHospitalStaff(model,character){
    }else{
     const isCoat=y>.74;
     const rib=.91+.11*Math.sin(x*133+y*67+z*52)**2;
-    const wrinkle=.91+.10*Math.sin(28*y+5*Math.sin(x*21)+13*z)**2;
+    const wrinkle=.87+.16*Math.sin(28*y+5*Math.sin(x*21)+13*z)**2;
     const dirty=Math.max(0,.32-Math.abs(y-.79))*1.1*Math.sin(19*x+31*z)**2;
     tone.copy(isCoat?cloth:trousers).multiplyScalar(rib*wrinkle).lerp(stain,dirty);
-    if(isCoat&&Math.abs(x)<.028&&z>.064)tone.lerp(seam,.62);
+    if(isCoat&&Math.abs(x)<.026&&z>.064)tone.lerp(seam,.52);
+    if(isCoat&&Math.abs(y-1.12)<.012&&x>.061&&x<.186&&z>.06)tone.lerp(seam,.39);
+    if(isCoat&&Math.abs(x)>.23&&y>.98&&y<1.04)tone.lerp(seam,.38);
     if(isCoat&&x>.075&&x<.16&&y>1.20&&y<1.31&&z>.07)tone.lerp(badge,.8);
    }
    tone.toArray(rgb,i*3);
   }
   mesh.geometry.setAttribute('color',new T.BufferAttribute(rgb,3));
-  mesh.material=new T.MeshStandardMaterial({vertexColors:true,roughness:.79});
+  const bumpMap=mesh.geometry.hasAttribute('uv')?(hospitalWeave??=uniformWeave()):null;
+  mesh.material=new T.MeshStandardMaterial({vertexColors:true,roughness:.86,bumpMap,bumpScale:.0015});
  });
+}
+function inPlaceClip(clip){
+ if(!clip)return null;
+ const clone=clip.clone();
+ for(const track of clone.tracks){
+  if(!/(hips|pelvis|root)[^.]?\.position$/i.test(track.name)&&!/(hips|pelvis|root).*\.position$/i.test(track.name))continue;
+  const {values}=track;
+  if(track.getValueSize()!==3)continue;
+  for(let i=3;i<values.length;i+=3){values[i]=values[0];values[i+2]=values[2];}
+ }
+ return clone;
 }
 async function installHospitalCharacters(){
  const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js');
@@ -1085,6 +1124,7 @@ async function installHospitalCharacters(){
    const asset=await loader.parseAsync(await new Response(stream).arrayBuffer(),'');
    const enemy=enemies.find(n=>n.kind===character.kind);
    const model=asset.scene;
+   model.traverse(object=>{if(object.isSkinnedMesh)object.frustumCulled=false;});
    if(character.coat)textureHospitalStaff(model,character);
    else model.traverse(mesh=>{
     if(!mesh.isMesh)return;
@@ -1103,7 +1143,7 @@ async function installHospitalCharacters(){
    const mixer=new T.AnimationMixer(model);
    const walkClip=asset.animations.find(clip=>/walking/i.test(clip.name));
    const runClip=asset.animations.find(clip=>/running/i.test(clip.name));
-   const walk=walkClip?mixer.clipAction(walkClip):null,run=runClip?mixer.clipAction(runClip):null;
+   const walk=walkClip?mixer.clipAction(inPlaceClip(walkClip)):null,run=runClip?mixer.clipAction(inPlaceClip(runClip)):null;
    enemy.g.add(pivot);enemy.characterMotion={mixer,walk,run,active:null};
    for(const original of enemy.placeholder)original.visible=false;
    document.documentElement.dataset[character.kind+'Model']='ready';
@@ -1115,7 +1155,7 @@ function animateHospitalCharacter(enemy,distance,dt){
  if(!motion)return;
  const next=distance>2.8&&enemy.kind!=='mortician'?(motion.run||motion.walk):motion.walk||motion.run;
  if(next&&next!==motion.active){motion.active?.stop();next.reset().play();motion.active=next;}
- if(next)next.paused=distance<=1.2;
+ if(next)next.timeScale=distance<=1.2?.16:1;
  motion.mixer.update(dt);
 }
 installHospitalCharacters().catch(error=>console.warn('Animated hospital models unavailable',error));
@@ -1156,19 +1196,23 @@ renderer.setAnimationLoop((time,frame)=>{
    const scale=dt*(mode?walkingSpeeds[walkMode]:4.1)/Math.max(1,Math.hypot(side,forward));
    move((Math.cos(heading)*side-Math.sin(heading)*forward)*scale,(-Math.sin(heading)*side-Math.cos(heading)*forward)*scale);
   }
+  if(state.step===1&&rig.position.z<-7.2)setStep(2,'The Orderly steps out of the service lift.');
+  if(state.step>=1&&state.step<3&&rig.position.z<1)state.wardPursuit=true;
+  const wardObstacles=state.wardPursuit&&state.step<3?movementObstacles():null;
   for(const n of enemies){
    if(n.hp<=0)continue;
    const z=rig.position.z;
-   if(state.step===1&&z<-7.2)setStep(2,'The Orderly steps out of the service lift.');
-   n.g.visible=n.kind==='orderly'?state.step===2:n.kind==='doctor'?state.step>=1&&state.step<3&&z<1:n.kind==='zombie'?state.step>=3&&state.step<6&&z<-14:n.kind==='mortician'?state.step>=4&&state.step<6:n.kind==='velvet'?state.step===9:n.kind==='lateBoss'?state.step===n.encounter:state.step===11;
+   n.g.visible=n.kind==='orderly'?state.step===2:n.kind==='doctor'?state.step<3&&Boolean(state.wardPursuit):n.kind==='zombie'?state.step>=3&&state.step<6&&z<-14:n.kind==='mortician'?state.step>=4&&state.step<6:n.kind==='velvet'?state.step===9:n.kind==='lateBoss'?state.step===n.encounter:state.step===11;
    if(!n.g.visible)continue;
    const p=n.g.position,dx=rig.position.x-p.x,dz=z-p.z,dist=Math.hypot(dx,dz);
    n.g.rotation.y=Math.atan2(dx,dz);n.tag.rotation.y=-n.g.rotation.y;
-   if(dist>1.2){const speed=n.kind==='orderly'?2.03:n.kind==='mortician'?1.48:n.kind==='zombie'?1.18:n.kind==='velvet'?2.15:n.kind==='hound'?2.45:n.kind==='lateBoss'?n.pursuit:1.68;p.x+=dx/dist*dt*speed;p.z+=dz/dist*dt*speed;}
+   if(dist>1.2){const speed=n.kind==='orderly'?2.03:n.kind==='mortician'?1.48:n.kind==='zombie'?1.18:n.kind==='velvet'?2.15:n.kind==='hound'?2.45:n.kind==='lateBoss'?n.pursuit:1.68;const step=dt*speed;
+    if(wardObstacles&&(n.kind==='doctor'||n.kind==='orderly'))pursueInWard(n,dx/dist,dz/dist,step,wardObstacles);
+    else{p.x+=dx/dist*step;p.z+=dz/dist*step;}}
    const gait=dist>1.2?Math.sin(elapsed*9)*.55:0;n.legs[0].rotation.x=gait;n.legs[1].rotation.x=-gait;n.arms[0].rotation.x=-gait;n.arms[1].rotation.x=gait;
    animateHospitalCharacter(n,dist,dt);
    if(n.unityModel){n.unityModel.rotation.z=gait*.11;n.unityModel.rotation.x=.11+gait*.07;n.unityModel.position.y=Math.abs(gait)*.055;}
-   if(dist<1.65&&elapsed>n.next){n.next=elapsed+1.12;state.hp=Math.max(0,state.hp-(n.kind==='mortician'?17:n.kind==='orderly'?13:n.kind==='lateBoss'?n.damage:9));tone(55,.16,'triangle');update();}
+   if(dist<1.65&&elapsed>n.next&&(!wardObstacles||!blockedAt((p.x+rig.position.x)*.5,(p.z+z)*.5,wardObstacles))){n.next=elapsed+1.12;state.hp=Math.max(0,state.hp-(n.kind==='mortician'?17:n.kind==='orderly'?13:n.kind==='lateBoss'?n.damage:9));tone(55,.16,'triangle');update();}
   }
   for(let i=shots.length-1;i>=0;i--){
    const s=shots[i];s.life-=dt;s.mesh.position.addScaledVector(s.v,dt);
