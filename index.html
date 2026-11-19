@@ -178,6 +178,113 @@ label(world,'BELOW INTAKE',0,2.75,-15,4);
 label(world,'THE BLUE HOUR',0,2.76,-29.2,4.5);
 label(world,'VR · STICK MOVE · TRIGGER USE / ATTACK',0,2.46,5,3.9);
 
+
+function dressAbandonedWard(){
+ const painted=0x5c7770,trim=0x364f49,steel=mat(0x737f7d),rust=mat(0x605045),rubber=mat(0x252d2b);
+ const wardBeds=[[-5.65,-4.6],[5.72,-4.55],[-5.65,-9.68],[5.72,-9.38]];
+ function rod(parent,a,b,r,material){
+  const start=new T.Vector3(...a),end=new T.Vector3(...b),direction=end.clone().sub(start);
+  const mesh=new T.Mesh(new T.CylinderGeometry(r,r,direction.length(),8),material);
+  mesh.position.copy(start.addScaledVector(direction,.5));
+  mesh.quaternion.setFromUnitVectors(new T.Vector3(0,1,0),direction.normalize());parent.add(mesh);
+ }
+ for(const side of [-1,1]){
+  const x=side*2.963;
+  box(world,x,.62,5.8,.025,1.24,12.9,painted);
+  box(world,x,1.26,5.8,.051,.07,12.9,trim);
+  box(world,side*2.98,1.45,-.59,.105,2.9,.14,0x8e9385);
+ }
+ box(world,0,2.94,-.59,6.03,.135,.15,0x929a8b);
+ box(world,0,.012,-.59,5.98,.019,.175,0x4f5654);
+ label(world,'WARD C  ·  RESTRICTED ACCESS',0,2.79,-.48,2.65);
+ label(world,'408',-2.54,2.36,-.43,.66);
+ const tape=label(world,'RESTRICTED ACCESS   /   WARD C',1.72,2.51,-1.84,1.0);
+ tape.rotation.z=.21;tape.material.color.setHex(0xe9be52);
+ for(let row=0;row<12;row++){
+  const z=11.62-row*2;
+  for(let col=0;col<4;col++){
+   const x=-2.28+col*1.52;
+   if((row===6&&col===0)||(row===9&&col===2))continue;
+   box(world,x,3.25,z,1.49,.074,1.96,(row+col)%3===0?0x899184:0x777f76);
+  }
+ }
+ for(const z of [3,-4.2,-8.7]){
+  box(world,-.55,3.10,z,1.27,.083,.29,0x464e4b);
+  for(const dz of [-.081,.081])box(world,-.55,3.051,z+dz,1.18,.024,.032,0xb4d0c5,0x5a8881);
+ }
+ for(const [x,z] of wardBeds){
+  const side=Math.sign(x),stand=x+side*.98;
+  rod(world,[stand,.07,z+.48],[stand,2.12,z+.48],.016,steel);
+  rod(world,[stand-.20,2.1,z+.48],[stand+.20,2.1,z+.48],.013,steel);
+  for(const offset of [-1,1])rod(world,[stand+offset*.26,.065,z+.48],[stand-offset*.09,.065,z+.60],.018,steel);
+  box(world,stand-.17,1.89,z+.48,.105,.23,.047,0xc9d9d4);
+  box(world,stand-.17,1.86,z+.455,.072,.09,.005,0xe0e4d6);
+  box(world,x,.39,z,1.06,.15,2.11,0x575b51);
+  box(world,x,.53,z,1.02,.13,1.99,0xa5ada0);
+  for(const dz of [-.99,.99]){
+   for(const dx of [-.48,.48])rod(world,[x+dx,.11,z+dz],[x+dx,.8,z+dz],.024,rust);
+   rod(world,[x-.48,.8,z+dz],[x+.48,.8,z+dz],.024,rust);
+  }
+  solids.push({x,z,w:1.16,d:2.15});
+ }
+ const windowFrame=new T.Group();windowFrame.position.set(7.79,1.82,-7);windowFrame.rotation.y=-Math.PI/2;world.add(windowFrame);
+ box(windowFrame,0,0,0,2.7,1.72,.10,0x626e6c);
+ box(windowFrame,0,0,.06,2.52,1.54,.032,0x769da9,0x456f85);
+ for(const x of [-.81,0,.81])box(windowFrame,x,0,.088,.044,1.53,.032,0x465b5e);
+ for(let i=0;i<10;i++){
+  const slat=box(windowFrame,i>6?.14:0,.7-i*.088,.12,2.54,.036,.07,0x667f7c);
+  if(i>6)slat.rotation.z=(i-6)*.036;
+ }
+ const light=new T.PointLight(0x8dcde8,31,9,1.8);light.position.set(6.65,2.05,-7);world.add(light);areaLights.push(light);
+ const chair=new T.Group();chair.position.set(4.2,0,-7.05);chair.rotation.y=-.37;world.add(chair);
+ box(chair,0,.53,-.055,.48,.069,.52,0x2d3c3a);
+ box(chair,0,.79,.183,.45,.42,.063,0x293634);
+ for(const side of [-1,1]){
+  const x=side*.282;
+  rod(chair,[x,.15,-.27],[x,.96,.232],.022,steel);
+  rod(chair,[x,.31,.18],[x,.62,-.23],.018,steel);
+  rod(chair,[x,.64,-.25],[x,.64,.18],.022,rubber);
+  for(const [y,z,r] of [[.312,.115,.288],[.105,-.279,.079]]){
+   const wheel=new T.Mesh(new T.TorusGeometry(r,.023,8,20),rubber);
+   wheel.rotation.y=Math.PI/2;wheel.position.set(x,y,z);chair.add(wheel);
+   for(let i=0;i<8;i++){
+    const a=i*Math.PI/4;
+    rod(chair,[x,y,z],[x,y+Math.sin(a)*r,z+Math.cos(a)*r],.006,steel);
+   }
+  }
+ }
+ solids.push({x:4.2,z:-7.05,w:.83,d:.89});
+ for(const [x,z,r] of [[-2.42,6.8,.48],[2.62,-4.8,.61],[-3.25,-10.7,.62],[4.54,-7.38,.38]]){
+  for(let n=0;n<4;n++){
+   const sheet=box(world,x+Math.sin(n*7)*r*.49,.027+n*.003,z+Math.cos(n*7)*r*.35,.22,.006,.315,0x9da89d);
+   sheet.rotation.y=n*.91;
+  }
+ }
+ const canvas=document.createElement('canvas');canvas.width=canvas.height=128;
+ const context=canvas.getContext('2d');
+ const wash=context.createRadialGradient(52,42,3,64,64,60);
+ wash.addColorStop(0,'rgba(36,29,22,.68)');wash.addColorStop(.47,'rgba(43,32,22,.36)');wash.addColorStop(1,'rgba(43,32,22,0)');
+ context.fillStyle=wash;context.fillRect(0,0,128,128);
+ for(let i=0;i<92;i++){
+  const x=(i*53)%119,y=(i*71)%121;
+  if(Math.hypot(x-64,y-64)>59)continue;
+  context.fillStyle=i%3===0?'rgba(29,33,26,.30)':'rgba(80,68,47,.25)';
+  context.fillRect(x,y,2+i%6,1+i%11);
+ }
+ const damp=new T.CanvasTexture(canvas);damp.colorSpace=T.SRGBColorSpace;
+ const stain=new T.MeshBasicMaterial({map:damp,transparent:true,side:T.DoubleSide,depthWrite:false});
+ const splash=new T.MeshStandardMaterial({map:damp,color:0x587682,transparent:true,opacity:.78,roughness:.23,depthWrite:false});
+ for(const [side,z,y,w,height] of [[-1,4.8,2.42,2.5,1.45],[1,7.6,2.53,2.3,1.4],[-1,10.92,2.64,2.4,1.1],[1,1.2,2.38,1.76,1.45]]){
+  const patch=new T.Mesh(new T.PlaneGeometry(w,height),stain);
+  patch.position.set(side*2.974,y,z);patch.rotation.y=-side*Math.PI/2;world.add(patch);
+ }
+ for(const [x,z,w,d] of [[1.2,1.9,1.86,.81],[-1.91,-5.05,1.72,.83],[4.25,-7.23,1.82,.83],[-.8,-10.26,1.43,.75]]){
+  const wet=new T.Mesh(new T.PlaneGeometry(w,d),splash);
+  wet.rotation.x=-Math.PI/2;wet.position.set(x,.024,z);world.add(wet);
+ }
+ return wardBeds;
+}
+const wardBedPositions=dressAbandonedWard();
 function buildPatientRoom(){
  const steel=new T.MeshStandardMaterial({color:0x869298,metalness:.77,roughness:.29});
  const rubber=new T.MeshStandardMaterial({color:0x262a31,roughness:.92});
@@ -1023,6 +1130,13 @@ async function installHospitalArt(){
    frame.position.set(-1.35,0,9);world.add(frame);
    const blanket=fit(bedding,1.08,.22,2.24,true);
    blanket.position.set(-1.35,.60,9);world.add(blanket);
+   for(const [index,[x,z]] of wardBedPositions.entries()){
+    const wardFrame=fit(bed.clone(true),1.14,.83,2.11,true);
+    const wardLinen=fit(bedding.clone(true),1.02,.22,1.94,true);
+    wardFrame.position.set(x,0,z);wardLinen.position.set(x,.56,z);
+    wardFrame.rotation.y=wardLinen.rotation.y=index%2?Math.PI:0;
+    world.add(wardFrame,wardLinen);
+   }
    for(const part of placeholderBed)part.visible=false;
   }),
   mesh('medicalBox').then(model=>{
