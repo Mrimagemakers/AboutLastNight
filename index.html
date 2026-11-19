@@ -3,8 +3,8 @@
 *{box-sizing:border-box}body{margin:0;background:#061016;color:#e9f9ff;font:15px system-ui;overflow:hidden;touch-action:none}canvas{display:block}button{font:inherit;font-weight:700;padding:11px 16px;color:#edfcff;background:#15313c;border:1px solid #6094a0;cursor:pointer}button:hover{background:#286074}#cover,#log{position:fixed;inset:0;z-index:4;display:grid;align-content:center;padding:8vw;background:linear-gradient(90deg,#020a11f5,#020a1120)}h1{font-size:clamp(56px,11vw,160px);line-height:.82;margin:0 0 24px;letter-spacing:-.075em}small{letter-spacing:.22em;color:#79e5e0}p{max-width:46ch;line-height:1.5}#hud{position:fixed;inset:0;pointer-events:none;padding:20px;display:none}#top{display:flex;gap:16px;justify-content:space-between}#top button,#touch button{pointer-events:auto}#objective{font-size:18px;font-weight:800}#stats,#hint{color:#9fe4e6}#cross{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:22px}#caption{position:absolute;bottom:15%;left:50%;transform:translateX(-50%);max-width:min(90%,660px);width:max-content;text-align:center;text-shadow:0 2px 4px #000;font-weight:700}#touch{display:none;position:absolute;bottom:2%;left:2%;right:2%;justify-content:space-between}#touch button{padding:12px}#log[hidden],#cover[hidden]{display:none}#log{background:#08151ef5}#notice{color:#ffbe82}@media(pointer:coarse){#touch{display:flex}#caption{bottom:19%}}
 #entries{max-height:55vh;overflow:auto} #entries p{margin:.5em 0} #top>div:last-child{display:flex;flex-wrap:wrap;gap:5px;align-content:start;justify-content:flex-end} @media(max-width:650px){#top button{font-size:11px;padding:6px}}
 </style>
-<div id="cover"><small>PENGAME PUBLISHING � THE HOLLOW LEGION</small><h1>ABOUT<br>LAST NIGHT</h1><p>04:17 AM. You wake up in a hospital room. Your wristband says D. Coleman. The two men outside your door know the rest. One is wearing your wristband.</p><div><button id="start">Wake up</button> <button id="vr">Enter VR</button> <button id="ar">AR evidence</button></div><p id="notice" role="status"></p></div>
-<div id="hud"><div id="top"><div><small id="place"></small><div id="objective"></div><div id="stats"></div></div><div><button id="campaign">Campaign</button> <button id="journal">Case file</button> <button id="restart">Restart</button></div></div><div id="cross">+</div><div id="caption"><div id="line"></div><div id="hint"></div></div><div id="touch"><div><button data-key="a">?</button><button data-key="w"></button><button data-key="s"></button><button data-key="d">?</button></div><div><button id="use">Use</button><button id="fire">Attack</button><button id="throw">Throw</button></div></div></div>
+<div id="cover"><small>PENGAME PUBLISHING · THE HOLLOW LEGION</small><h1>ABOUT<br>LAST NIGHT</h1><p>04:17 AM. You wake up in a hospital room. Your wristband says D. Coleman. The two men outside your door know the rest. One is wearing your wristband.</p><div><button id="start">Wake up</button> <button id="vr">Enter VR</button> <button id="ar">AR evidence</button></div><p id="notice" role="status"></p></div>
+<div id="hud"><div id="top"><div><small id="place"></small><div id="objective"></div><div id="stats"></div></div><div><button id="campaign">Campaign</button> <button id="journal">Case file</button> <button id="restart">Restart</button></div></div><div id="cross">+</div><div id="caption"><div id="line"></div><div id="hint"></div></div><div id="touch"><div><button data-key="a">◀</button><button data-key="w">▲</button><button data-key="s">▼</button><button data-key="d">▶</button></div><div><button id="use">Use</button><button id="fire">Attack</button><button id="throw">Throw</button></div></div></div>
 <div id="log" hidden><small>D. COLEMAN</small><h2 id="logTitle">Case file</h2><div id="entries"></div><div><button id="close">Resume</button></div></div>
 <script type="module">
 import * as T from 'https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js';
@@ -23,21 +23,21 @@ let state, running=false, mode='', yaw=0,pitch=0,elapsed=0,toast=0,arIndex=0,arP
 const campaign=[
  ['Room 408','The Orderly'],['Below Intake','The Mortician'],['The Blue Hour','Investigation'],
  ['High Life After Hours','Velvet'],['Bay B2','The Towman'],['West End Blackout','Switchblade Rook'],
- ['Isaiah's Lock Shop','The Collector'],['The Bone Line','The Conductor'],['Greenwood After Dark','The Widow'],
- ['Mercer's Table','Mercer's Champion'],['Property of D. Coleman','The Mimic'],['The Red Archive','Adrian Voss'],
- ['Last Call for Vale','Marcus Vale'],['Before First Light','The First Tenant � Final boss']
+ ['Isaiah’s Lock Shop','The Collector'],['The Bone Line','The Conductor'],['Greenwood After Dark','The Widow'],
+ ['Mercer’s Table','Mercer’s Champion'],['Property of D. Coleman','The Mimic'],['The Red Archive','Adrian Voss'],
+ ['Last Call for Vale','Marcus Vale'],['Before First Light','The First Tenant · Final boss']
 ];
 const chapters=[
  'Read your wristband and take the flashlight','Escape the ward','Defeat the Orderly and take the lift',
- 'Find the original intake report','Restore the morgue's UV lights','Defeat the Mortician and leave the morgue',
+ 'Find the original intake report','Restore the morgue’s UV lights','Defeat the Mortician and leave the morgue',
  'Meet Mara at the Blue Hour','Choose a way into High Life','High Life lead secured'
 ];
 const clues=[
- 'Hospital wristband � D. Coleman, admitted at 03:11. One of the doctors wears a copy.',
- 'Orderly's badge � A hollow circle surrounds a red crescent. You saw it at High Life.',
- 'Original intake report � The same patient appears on three records dated forty years apart.',
- 'Mortician's transfer slip � Night deliveries signed for by the Hollow Legion.',
- 'Mara's message � Sienna asked for help finding Trey before you went to High Life.'
+ 'Hospital wristband · D. Coleman, admitted at 03:11. One of the doctors wears a copy.',
+ 'Orderly’s badge · A hollow circle surrounds a red crescent. You saw it at High Life.',
+ 'Original intake report · The same patient appears on three records dated forty years apart.',
+ 'Mortician’s transfer slip · Night deliveries signed for by the Hollow Legion.',
+ 'Mara’s message · Sienna asked for help finding Trey before you went to High Life.'
 ];
 const stageFor=step=>step<3?0:step<6?1:2;
 const mat=(color,glow=0)=>new T.MeshStandardMaterial({color,roughness:.73,emissive:glow,emissiveIntensity:glow?1.5:0});
@@ -106,7 +106,7 @@ label(world,'ST. ORISON / ROOM 408',0,2.73,-1.9,3.7);
 label(world,'SERVICE LIFT',0,2.74,-12.8,3.3);
 label(world,'BELOW INTAKE',0,2.75,-15,4);
 label(world,'THE BLUE HOUR',0,2.76,-29.2,4.5);
-label(world,'VR � STICK MOVE � TRIGGER USE / ATTACK',0,2.46,5,3.9);
+label(world,'VR · STICK MOVE · TRIGGER USE / ATTACK',0,2.46,5,3.9);
 for(const x of [-7.5,7.5])for(const z of [-17,-20,-23,-25]){
  for(let y=.42;y<2.55;y+=.62){
   box(world,x,y,z,.82,.58,1.55,0x62717b);
@@ -170,7 +170,7 @@ const maraHead=new T.Mesh(new T.SphereGeometry(.19,14,10),mat(0x956959));
 maraHead.position.y=1.68;mara.add(maraHead);
 item('Talk to Mara',0,1,-31.7,0xe46ba7,e=>{
  if(state.step!==6)return;record(4);state.rep+=2;state.cash+=150;
- remove(e);setStep(7,'Mara: "Sienna used to work High Life. We can get you back inside."');
+ remove(e);setStep(7,'Mara: “Sienna used to work High Life. We can get you back inside.”');
 });
 function chooseRoute(route){
  if(state.step!==7)return say('Talk to Mara first.');
@@ -178,8 +178,8 @@ function chooseRoute(route){
  for(const entry of interact.filter(i=>i.name.startsWith('Call ')))remove(entry);
  setStep(8,route==='staff'?'Mara will get you through the staff door.':'Rook will meet you at the alley entrance.');
 }
-item('Call Mara � staff door',-2.7,1.08,-35,0x6de8c5,()=>chooseRoute('staff'));
-item('Call Rook � alley entrance',2.7,1.08,-35,0xf2a072,()=>chooseRoute('alley'));
+item('Call Mara · staff door',-2.7,1.08,-35,0x6de8c5,()=>chooseRoute('staff'));
+item('Call Rook · alley entrance',2.7,1.08,-35,0xf2a072,()=>chooseRoute('alley'));
 item('Replenish health',-3.7,1.12,-33.45,0xe377a7,e=>{state.hp=100;state.rep++;remove(e);update();say('The bartender pours you water. +1 reputation.');});
 actor('False doctor',-1.35,-4,0xd7dbd6,2,'doctor');
 actor('The Orderly',0,-10.4,0xd1d7cc,5,'orderly');
@@ -191,7 +191,7 @@ let statusPlane;
 function refreshVR(){
  if(mode!=='immersive-vr')return;
  if(statusPlane){vrText.remove(statusPlane);statusPlane.material.map.dispose();statusPlane.material.dispose();statusPlane.geometry.dispose();}
- statusPlane=label(vrText,state.hp>0?chapters[state.step]+' � '+state.hp+' HP':'Trigger to retry',0,0,0,2.4);
+ statusPlane=label(vrText,state.hp>0?chapters[state.step]+' · '+state.hp+' HP':'Trigger to retry',0,0,0,2.4);
 }
 const arRelic=new T.Group();arWorld.add(arRelic);
 box(arRelic,0,0,0,.27,.15,.032,0x53d8d3,0x12605e);
@@ -226,7 +226,7 @@ function setStep(step,message){state.step=step;update();say(message,7);}
 function say(message,seconds=4){$('line').textContent=message;toast=elapsed+seconds;}
 function update(){
  const s=state.step;
- $('place').textContent='LEVEL '+(stageFor(s)+1)+' / 14 � '+campaign[stageFor(s)][0].toUpperCase();
+ $('place').textContent='LEVEL '+(stageFor(s)+1)+' / 14 · '+campaign[stageFor(s)][0].toUpperCase();
  $('objective').textContent=state.hp>0?chapters[s]:'Coleman is down. Restart to try again.';
  $('stats').textContent=state.hp+' HP  /  $'+state.cash+'  /  REP '+state.rep+'  /  '+state.gear+'  /  '+state.ammo+' charges  /  '+state.throwables+' throws';
  gates.forEach(g=>g.mesh.visible=s<g.step);
@@ -279,7 +279,7 @@ function attack(controller,throwing=false){
  n.g.visible=false;state.cash+=n.kind==='orderly'||n.kind==='mortician'?250:40;state.rep++;
  if(n.kind==='orderly'){record(1);say('The Orderly drops his badge. The service lift is unlocked.');}
  if(n.kind==='mortician'){record(3);say('You found the Hollow Legion transfer slip. Open the morgue exit.');}
- }else say(n.kind==='orderly'||n.kind==='mortician'?'Boss stability � '+n.hp+' hits left':'Hit');
+ }else say(n.kind==='orderly'||n.kind==='mortician'?'Boss stability · '+n.hp+' hits left':'Hit');
  }
  update();
 }
@@ -294,15 +294,15 @@ function journal(open,showCampaign=false){
  if(showCampaign){
   $('entries').replaceChildren(...campaign.map(([name,boss],index)=>{
    const row=document.createElement('p');
-   const status=index>2?' � Planned':index<stageFor(state.step)||state.step===8?' � Completed':index===stageFor(state.step)?' � Current':' � Upcoming';
-   row.textContent=(index+1)+'. '+name+' � '+boss+status;
+   const status=index>2?' · Planned':index<stageFor(state.step)||state.step===8?' · Completed':index===stageFor(state.step)?' · Current':' · Upcoming';
+   row.textContent=(index+1)+'. '+name+' · '+boss+status;
    return row;
   }));
  }else $('entries').replaceChildren(...(state.clues.length?state.clues.map(i=>{const row=document.createElement('p');row.textContent=clues[i];return row;}):[document.createTextNode('No evidence collected yet.')]));
  }
  keys.clear();
 }
-$('start').onclick=()=>{start();say('WASD to move � mouse to look � E use � click attack � G throw',8);renderer.domElement.requestPointerLock?.()?.catch?.(()=>{});};
+$('start').onclick=()=>{start();say('WASD to move · mouse to look · E use · click attack · G throw',8);renderer.domElement.requestPointerLock?.()?.catch?.(()=>{});};
 $('campaign').onclick=()=>journal(true,true);$('journal').onclick=()=>journal(true);$('close').onclick=()=>journal(false);$('restart').onclick=reset;
 $('use').onclick=()=>use();$('fire').onclick=()=>attack();$('throw').onclick=()=>attack(null,true);
 addEventListener('keydown',e=>{
@@ -392,7 +392,7 @@ renderer.setAnimationLoop(()=>{
    const s=shots[i];s.life-=dt;s.mesh.position.addScaledVector(s.v,dt);
    if(s.life<=0){world.remove(s.mesh);s.mesh.geometry.dispose();s.mesh.material.dispose();shots.splice(i,1);}
   }
-  if(!mode){aim();const item=target();$('hint').textContent=item?'E / USE � '+item.name:'';}
+  if(!mode){aim();const item=target();$('hint').textContent=item?'E / USE · '+item.name:'';}
   if(elapsed>toast)$('line').textContent='';
  }
  renderer.render(scene,camera);
