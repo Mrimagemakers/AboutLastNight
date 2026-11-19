@@ -500,6 +500,9 @@ function dressPickup(name,kind){
  item.mesh.material.visible=false;
  item.tag.position.y=item.mesh.position.y+.22;
 }
+box(world,2.32,.47,-3.75,.48,.93,.42,0x697980);
+box(world,2.32,.964,-3.75,.53,.055,.47,0x9da8ad);
+solids.push({x:2.32,z:-3.75,w:.53,d:.47});
 item('First aid kit',2.32,1.04,-3.75,0xc5ddd3,entry=>{
  if(state.hp>=100)return say('Health is already full.');
  state.hp=Math.min(100,state.hp+35);remove(entry);update();say('First aid applied.');
@@ -508,7 +511,7 @@ for(const [name,kind] of [['Wristband','wristband'],['Steel flashlight','flashli
 const vrText=new T.Group();rig.add(vrText);vrText.visible=false;
 const vrControls=label(vrText,'LEFT STICK MOVE    ·    RIGHT STICK TURN',0,-.105,0,.69);
 const vrActions=label(vrText,'TRIGGER USE / ATTACK     ·     GRIP THROW',0,-.208,0,.69);
-const vrPosition=new T.Vector3(),vrFacing=new T.Quaternion();
+const vrPosition=new T.Vector3(),vrFacing=new T.Quaternion(),vrForward=new T.Vector3();
 let statusPlane, snapDirection=0;
 for(const panel of [vrControls,vrActions]){
  panel.material.depthTest=false;panel.material.depthWrite=false;panel.renderOrder=20;
@@ -519,11 +522,11 @@ function refreshVR(){
  statusPlane=label(vrText,state.hp>0?chapters[state.step]+' · '+state.hp+' HP':'Trigger to retry',0,0,0,.84);
  statusPlane.material.depthTest=false;statusPlane.material.depthWrite=false;statusPlane.renderOrder=20;
 }
-function followHeadset(){
- const view=renderer.xr.getCamera();
- view.getWorldPosition(vrPosition);view.getWorldQuaternion(vrFacing);
- rig.worldToLocal(vrPosition);
- vrFacing.premultiply(rig.quaternion.clone().invert());
+function followHeadset(frame){
+ const space=renderer.xr.getReferenceSpace();
+ const transform=space&&frame?.getViewerPose(space)?.transform;
+ if(!transform)return;
+ vrPosition.copy(transform.position);vrFacing.copy(transform.orientation);
  vrText.position.set(0,.26,-1.68).applyQuaternion(vrFacing).add(vrPosition);
  vrText.quaternion.copy(vrFacing);
 }
@@ -984,8 +987,9 @@ function animateHospitalCharacter(enemy,distance,dt){
  motion.mixer.update(dt);
 }
 installHospitalCharacters().catch(error=>console.warn('Animated hospital models unavailable',error));
-renderer.setAnimationLoop(()=>{
+renderer.setAnimationLoop((time,frame)=>{
  const dt=Math.min(.05,clock.getDelta());elapsed+=dt;
+ if(mode==='immersive-vr')followHeadset(frame);
  const padMove=pollController(dt);
  scene.background=mode==='immersive-ar'?null:fogColor;
  scene.fog=mode==='immersive-ar'?null:fog;
@@ -1005,9 +1009,9 @@ renderer.setAnimationLoop(()=>{
    const turn=turning[turning.length>=4?2:0]||0;
    if(Math.abs(turn)<.3)snapDirection=0;
    if(Math.abs(turn)>.65&&!snapDirection){snapDirection=Math.sign(turn);rig.rotation.y-=snapDirection*Math.PI/6;}
-   const direction=new T.Vector3();
-   renderer.xr.getCamera().getWorldDirection(direction);
-   heading=Math.atan2(-direction.x,-direction.z);
+   vrForward.set(0,0,-1).applyQuaternion(vrFacing).applyQuaternion(rig.quaternion);
+   if(Math.hypot(vrForward.x,vrForward.z)>.05)heading=Math.atan2(-vrForward.x,-vrForward.z);
+   else heading=rig.rotation.y;
   }
   if(Math.hypot(side,forward)>(mode?.17:.001)){
    const scale=dt*(mode?2.6:4.1)/Math.max(1,Math.hypot(side,forward));
@@ -1034,7 +1038,7 @@ renderer.setAnimationLoop(()=>{
   if(!mode){aim();const item=target();$('hint').textContent=item?(controllerIndex===null?'E / USE':'× / A · USE')+' · '+item.name:'';}
   if(elapsed>toast)$('line').textContent='';
  }
- if(mode==='immersive-vr')followHeadset();
+
  const dominant=handVisuals.find(hand=>hand.source?.handedness==='right')||handVisuals.find(hand=>hand.source?.targetRayMode==='tracked-pointer');
  for(const hand of handVisuals){
   const active=mode==='immersive-vr'&&hand.source?.targetRayMode==='tracked-pointer';
