@@ -30,10 +30,13 @@ const campaign=[
  ['Mercer’s Table','Mercer’s Champion'],['Property of D. Coleman','The Mimic'],['The Red Archive','Adrian Voss'],
  ['Last Call for Vale','Marcus Vale'],['Before First Light','The First Tenant · Final boss']
 ];
+const laterLevels=[["West End Blackout","Restore the courtyard fuse","Fuse panel","Meet the bus driver","Dispatch logs tie the outage to Isaiah’s locksmith shop.",5396068,15242324,"street"],["Isaiah’s Lock Shop","Match Isaiah’s key tags","Isaiah’s key ledger","Unlock the service passage","Isaiah kept a spare key for tenants escaping through the Bone Line.",7692370,15776124,"shop"],["The Bone Line","Power the maintenance trolley","Track switch","Board the maintenance trolley","The old line stops at a sealed entrance to Greenwood.",5398375,8436176,"rail"],["Greenwood After Dark","Read the oldest burial marker","Burial inscription","Leave through the crypt stairs","The oldest burial lists the same name as the original hospital lease.",4808794,10394831,"crypt"],["Mercer’s Table","Find the auction bid sheet","Auction bid sheet","Escort Trey out","Trey identifies the buyer who forged Coleman’s deed.",6768468,14457958,"club"],["Property of D. Coleman","Compare the forged deed","Safehouse deed","Open the archive entrance","The forged deed carries a Red Archive intake number.",6182242,11510239,"house"],["The Red Archive","Recover Vale’s radio recording","Vale’s radio recording","Send the archive evidence to Mara","Vale survived. Voss concealed the transfer to the tunnels.",6506829,14577530,"archive"],["Last Call for Vale","Play the recording at the service bridge","Bridge terminal","Open the lower tunnel","Vale confirms that living prisoners are being held beneath St. Orison.",4741733,9286610,"bridge"],["Before First Light","Release the prisoners","Chamber release","Open the surface route","The prisoners escaped. Mara received the evidence.",6311764,15248502,"final"]];
 const chapters=[
  'Read your wristband and take the flashlight','Escape the ward','Defeat the Orderly and take the lift',
  'Find the original intake report','Restore the morgue’s UV lights','Defeat the Mortician and leave the morgue',
- 'Meet Mara at the Blue Hour','Choose a way into High Life','Find Sienna’s earring and both recordings','Defeat Velvet and take the B2 access card','Recover the B2 camera drive','Stop the Towman and release the shutter','Bay B2 cleared · West End Blackout is next'
+ 'Meet Mara at the Blue Hour','Choose a way into High Life','Find Sienna’s earring and both recordings','Defeat Velvet and take the B2 access card','Recover the B2 camera drive','Stop the Towman and release the shutter','Leave Bay B2 through the service exit',
+ ...laterLevels.flatMap(level=>[level[1],'Confront '+campaign[5+laterLevels.indexOf(level)][1]+' and find the exit']),
+ 'Campaign complete · Before First Light'
 ];
 const clues=[
  'Hospital wristband · D. Coleman, admitted at 03:11. One of the doctors wears a copy.',
@@ -43,9 +46,10 @@ const clues=[
  'Mara’s message · Sienna asked for help finding Trey before you went to High Life.',
  'High Life security footage · Trey was taken to Bay B2.',
  'B2 camera drive · The man in your jacket walks like Vale. He is alive.',
- 'Dispatch ticket · Someone ordered the West End blackout.'
+ 'Dispatch ticket · Someone ordered the West End blackout.',
+ ...laterLevels.map(level=>level[4])
 ];
-const stageFor=step=>step<3?0:step<6?1:step<8?2:step<10?3:4;
+const stageFor=step=>step<3?0:step<6?1:step<8?2:step<10?3:step<13?4:Math.min(13,5+Math.floor((step-13)/2));
 const mat=(color,glow=0)=>new T.MeshStandardMaterial({color,roughness:.73,emissive:glow,emissiveIntensity:glow?1.5:0});
 function box(parent,x,y,z,w,h,d,color,glow=0){
  const m=new T.Mesh(new T.BoxGeometry(w,h,d),mat(color,glow));m.position.set(x,y,z);parent.add(m);return m;
@@ -62,8 +66,9 @@ function label(parent, words,x,y,z,width=2.5){
  const map=new T.CanvasTexture(cv);map.colorSpace=T.SRGBColorSpace;
  const mesh=new T.Mesh(new T.PlaneGeometry(width,width*.1875),new T.MeshBasicMaterial({map,side:T.DoubleSide}));mesh.position.set(x,y,z);parent.add(mesh);return mesh;
 }
+const areaLights=[];
 function lamp(x,y,z,c,power=24){
- const light=new T.PointLight(c,power,13,1.8);light.position.set(x,y,z);world.add(light);
+ const light=new T.PointLight(c,power,13,1.8);light.position.set(x,y,z);world.add(light);areaLights.push(light);
  const fixture=box(world,x,y+.08,z,1.5,.07,.2,c,c);
  if(z>=-27)hospitalFixtures.push(fixture);
 }
@@ -508,6 +513,91 @@ item('First aid kit',2.32,1.04,-3.75,0xc5ddd3,entry=>{
  state.hp=Math.min(100,state.hp+35);remove(entry);update();say('First aid applied.');
 });
 for(const [name,kind] of [['Wristband','wristband'],['Steel flashlight','flashlight'],['Spare tools','tools'],['Stun launcher','stun'],['First aid kit','medical']])dressPickup(name,kind);
+
+function buildLaterEnvironment(x,color,light,style){
+ buildShell(x,color,['street','shop','club','house'].includes(style)?brick:concrete);
+ for(const z of [7,.5,-7])lamp(x,3.08,z,light,18);
+ switch(style){
+ case 'street':
+  for(const side of [-1,1]){
+   block(x+side*5.9,-2,3,7.4,0x6d5350,brick);
+   for(const z of [-4,-1,2])box(world,x+side*4.37,1.5,z,.05,.94,.85,0x626c6b);
+   box(world,x+side*3.4,.07,0,1.5,.16,18,0x717a78);
+  }
+  box(world,x,.006,0,.055,.012,18,0xb5a56d);break;
+ case 'shop':
+  for(const z of [-5,-1,3]){
+   finish(box(world,x-5,.58,z,2.9,1.1,1,0x735740),wood,3,1);
+   for(let i=0;i<6;i++)box(world,x-6+i*.36,1.33,z,.113,.27,.035,0xa7a491);
+  }break;
+ case 'rail':
+ case 'bridge':
+  for(const side of [-1,1]){
+   box(world,x+side*5.5,.12,0,4,.24,19,0x6c7477);
+   box(world,x+side*.71,.014,0,.055,.028,19,0x858b8e);
+  }
+  for(let z=-9;z<=9;z+=.62)box(world,x,.003,z,1.92,.025,.11,0x51473d);
+  if(style==='rail')block(x+5,-4,2.2,8,0x526368);
+  else for(const side of [-1,1])box(world,x+side*2.1,.68,0,.12,1.05,11,0x636f77);
+  break;
+ case 'crypt':
+  for(const side of [-1,1])for(const z of [-7,-3,1]){
+   finish(box(world,x+side*4,.48,z,1.45,.92,2.13,0x7f8582),concrete,2,2);
+   box(world,x+side*4,.99,z,1.55,.12,2.24,0x929894);
+  }break;
+ case 'club':
+  finish(box(world,x-5,.57,0,1.2,1.15,9,0x79533d),wood,5,1);
+  for(const z of [-6,-2,2,6]){box(world,x+4,.66,z,1.43,.12,1.7,0x92644d);box(world,x+4,.32,z,.18,.64,.18,0x51423d);}
+  break;
+ case 'house':
+  block(x-3.8,1,.17,8,0x71646a);
+  box(world,x+5,.88,-4,3.5,1.76,.5,0x827267);
+  for(const z of [-3,2,6])box(world,x+4,.4,z,2.5,.74,1,0x5f5355);
+  break;
+ case 'archive':
+  for(const z of [-6,-2,2,6])for(const side of [-1,1]){
+   block(x+side*5.45,z,2.3,.63,0x4e545c);
+   for(const y of [.55,1.28,2.05])box(world,x+side*5.45,y,z+.33,2.19,.045,.024,0xb28b77);
+  }break;
+ case 'final':
+  for(const side of [-1,1])for(const z of [-7,-2,3]){
+   block(x+side*5.2,z,.61,.61,0x827574);
+   for(let i=0;i<5;i++)box(world,x+side*(3.9+i*.48),1.28,z-.8,.045,2.48,.044,0x524d4c);
+  }
+  box(world,x,.13,-8.5,5.2,.26,3.5,0x82706b);break;
+ }
+ label(world,campaign[5+(x-96)/32][0].toUpperCase(),x,2.69,-10.62,5.6);
+}
+function enterLaterLevel(index){
+ const level=laterLevels[index];
+ arrive(13+index*2,96+index*32,8.6,level[0]+'. '+level[1]+'.');
+ state.ammo=Math.max(state.ammo,26);
+ update();
+}
+item('West End service exit',65.2,1.09,-9.8,0x78988d,entry=>{
+ if(state.step!==12)return;
+ remove(entry);enterLaterLevel(0);
+});
+for(const [index,level] of laterLevels.entries()){
+ const [,objective,clueName,exitName,evidence,color,light,style]=level;
+ const x=96+index*32,step=13+index*2,bossName=campaign[index+5][1];
+ buildLaterEnvironment(x,color,light,style);
+ box(world,x-1.8,.47,-1,.69,.91,.55,0x535a61);
+ item(clueName,x-1.8,1.02,-1,light,entry=>{
+  if(state.step!==step)return;
+  record(8+index);remove(entry);setStep(step+1,evidence+' '+bossName+' is approaching.');
+ });
+ const boss=actor(bossName,x,-7.3,light,8+index,'lateBoss');
+ boss.encounter=step+1;boss.pursuit=1.48+index*.075;boss.damage=10+index;
+ if(index===8)boss.g.scale.setScalar(1.4);
+ item(exitName,x,1.03,-9.7,0x83bd9f,entry=>{
+  if(state.step!==step+1)return say(objective+' first.');
+  if(boss.hp>0)return say('Defeat '+bossName+' first.');
+  remove(entry);
+  if(index+1<laterLevels.length)enterLaterLevel(index+1);
+  else setStep(31,'First light. The prisoners are safe and the city has the evidence.');
+ });
+}
 const vrText=new T.Group();rig.add(vrText);vrText.visible=false;
 const vrActions=label(vrText,'TRIGGER USE / ATTACK  ·  GRIP THROW',0,-.312,0,.74);
 const vrOptions=label(vrText,'X CHANGE MOVEMENT  ·  Y CHANGE TURN',0,-.206,0,.74);
@@ -675,7 +765,7 @@ function journal(open,showCampaign=false){
  if(showCampaign){
   $('entries').replaceChildren(...campaign.map(([name,boss],index)=>{
    const row=document.createElement('p');
-   const status=index>4?' · Planned':index<stageFor(state.step)||state.step===12?' · Completed':index===stageFor(state.step)?' · Current':' · Upcoming';
+   const status=index<stageFor(state.step)||state.step===31?' · Completed':index===stageFor(state.step)?' · Current':' · Upcoming';
    row.textContent=(index+1)+'. '+name+' · '+boss+status;
    return row;
   }));
@@ -1070,15 +1160,15 @@ renderer.setAnimationLoop((time,frame)=>{
    if(n.hp<=0)continue;
    const z=rig.position.z;
    if(state.step===1&&z<-7.2)setStep(2,'The Orderly steps out of the service lift.');
-   n.g.visible=n.kind==='orderly'?state.step===2:n.kind==='doctor'?state.step>=1&&state.step<3&&z<1:n.kind==='zombie'?state.step>=3&&state.step<6&&z<-14:n.kind==='mortician'?state.step>=4&&state.step<6:n.kind==='velvet'?state.step===9:state.step===11;
+   n.g.visible=n.kind==='orderly'?state.step===2:n.kind==='doctor'?state.step>=1&&state.step<3&&z<1:n.kind==='zombie'?state.step>=3&&state.step<6&&z<-14:n.kind==='mortician'?state.step>=4&&state.step<6:n.kind==='velvet'?state.step===9:n.kind==='lateBoss'?state.step===n.encounter:state.step===11;
    if(!n.g.visible)continue;
    const p=n.g.position,dx=rig.position.x-p.x,dz=z-p.z,dist=Math.hypot(dx,dz);
    n.g.rotation.y=Math.atan2(dx,dz);n.tag.rotation.y=-n.g.rotation.y;
-   if(dist>1.2){const speed=n.kind==='orderly'?2.03:n.kind==='mortician'?1.48:n.kind==='zombie'?1.18:n.kind==='velvet'?2.15:n.kind==='hound'?2.45:1.68;p.x+=dx/dist*dt*speed;p.z+=dz/dist*dt*speed;}
+   if(dist>1.2){const speed=n.kind==='orderly'?2.03:n.kind==='mortician'?1.48:n.kind==='zombie'?1.18:n.kind==='velvet'?2.15:n.kind==='hound'?2.45:n.kind==='lateBoss'?n.pursuit:1.68;p.x+=dx/dist*dt*speed;p.z+=dz/dist*dt*speed;}
    const gait=dist>1.2?Math.sin(elapsed*9)*.55:0;n.legs[0].rotation.x=gait;n.legs[1].rotation.x=-gait;n.arms[0].rotation.x=-gait;n.arms[1].rotation.x=gait;
    animateHospitalCharacter(n,dist,dt);
    if(n.unityModel){n.unityModel.rotation.z=gait*.11;n.unityModel.rotation.x=.11+gait*.07;n.unityModel.position.y=Math.abs(gait)*.055;}
-   if(dist<1.65&&elapsed>n.next){n.next=elapsed+1.12;state.hp=Math.max(0,state.hp-(n.kind==='mortician'?17:n.kind==='orderly'?13:9));tone(55,.16,'triangle');update();}
+   if(dist<1.65&&elapsed>n.next){n.next=elapsed+1.12;state.hp=Math.max(0,state.hp-(n.kind==='mortician'?17:n.kind==='orderly'?13:n.kind==='lateBoss'?n.damage:9));tone(55,.16,'triangle');update();}
   }
   for(let i=shots.length-1;i>=0;i--){
    const s=shots[i];s.life-=dt;s.mesh.position.addScaledVector(s.v,dt);
@@ -1096,6 +1186,7 @@ renderer.setAnimationLoop((time,frame)=>{
   hand.flash.visible=Boolean(active&&hand===dominant&&state.gear==='Flashlight');
   hand.stun.visible=Boolean(active&&hand===dominant&&state.gear==='Stun launcher');
  }
+ for(const light of areaLights){light.visible=Math.abs(light.position.x-rig.position.x)<16&&Math.abs(light.position.z-rig.position.z)<16;}
  renderer.render(scene,camera);
 });
 </script></html>
