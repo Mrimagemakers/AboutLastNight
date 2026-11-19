@@ -1,0 +1,400 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"><title>About Last Night</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#061016;color:#e9f9ff;font:15px system-ui;overflow:hidden;touch-action:none}canvas{display:block}button{font:inherit;font-weight:700;padding:11px 16px;color:#edfcff;background:#15313c;border:1px solid #6094a0;cursor:pointer}button:hover{background:#286074}#cover,#log{position:fixed;inset:0;z-index:4;display:grid;align-content:center;padding:8vw;background:linear-gradient(90deg,#020a11f5,#020a1120)}h1{font-size:clamp(56px,11vw,160px);line-height:.82;margin:0 0 24px;letter-spacing:-.075em}small{letter-spacing:.22em;color:#79e5e0}p{max-width:46ch;line-height:1.5}#hud{position:fixed;inset:0;pointer-events:none;padding:20px;display:none}#top{display:flex;gap:16px;justify-content:space-between}#top button,#touch button{pointer-events:auto}#objective{font-size:18px;font-weight:800}#stats,#hint{color:#9fe4e6}#cross{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:22px}#caption{position:absolute;bottom:15%;left:50%;transform:translateX(-50%);max-width:min(90%,660px);width:max-content;text-align:center;text-shadow:0 2px 4px #000;font-weight:700}#touch{display:none;position:absolute;bottom:2%;left:2%;right:2%;justify-content:space-between}#touch button{padding:12px}#log[hidden],#cover[hidden]{display:none}#log{background:#08151ef5}#notice{color:#ffbe82}@media(pointer:coarse){#touch{display:flex}#caption{bottom:19%}}
+#entries{max-height:55vh;overflow:auto} #entries p{margin:.5em 0} #top>div:last-child{display:flex;flex-wrap:wrap;gap:5px;align-content:start;justify-content:flex-end} @media(max-width:650px){#top button{font-size:11px;padding:6px}}
+</style>
+<div id="cover"><small>PENGAME PUBLISHING � THE HOLLOW LEGION</small><h1>ABOUT<br>LAST NIGHT</h1><p>04:17 AM. You wake up in a hospital room. Your wristband says D. Coleman. The two men outside your door know the rest. One is wearing your wristband.</p><div><button id="start">Wake up</button> <button id="vr">Enter VR</button> <button id="ar">AR evidence</button></div><p id="notice" role="status"></p></div>
+<div id="hud"><div id="top"><div><small id="place"></small><div id="objective"></div><div id="stats"></div></div><div><button id="campaign">Campaign</button> <button id="journal">Case file</button> <button id="restart">Restart</button></div></div><div id="cross">+</div><div id="caption"><div id="line"></div><div id="hint"></div></div><div id="touch"><div><button data-key="a">?</button><button data-key="w"></button><button data-key="s"></button><button data-key="d">?</button></div><div><button id="use">Use</button><button id="fire">Attack</button><button id="throw">Throw</button></div></div></div>
+<div id="log" hidden><small>D. COLEMAN</small><h2 id="logTitle">Case file</h2><div id="entries"></div><div><button id="close">Resume</button></div></div>
+<script type="module">
+import * as T from 'https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js';
+const $=id=>document.getElementById(id);
+const fogColor=new T.Color(0x0a141e), fog=new T.FogExp2(0x101c26,.042);
+const scene=new T.Scene(), camera=new T.PerspectiveCamera(68,innerWidth/innerHeight,.06,100), rig=new T.Group();
+const renderer=new T.WebGLRenderer({antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setSize(innerWidth,innerHeight);
+renderer.xr.enabled=true;renderer.toneMapping=T.ACESFilmicToneMapping;document.body.prepend(renderer.domElement);
+scene.add(rig);rig.add(camera);
+const world=new T.Group(), arWorld=new T.Group();scene.add(world,arWorld);arWorld.visible=false;
+scene.add(new T.HemisphereLight(0xc6eaff,0x42404f,2.15));
+const solids=[], interact=[], enemies=[], shots=[], keys=new Set();
+const ray=new T.Raycaster(), clock=new T.Clock();
+let state, running=false, mode='', yaw=0,pitch=0,elapsed=0,toast=0,arIndex=0,arPlaced=false,audio;
+const campaign=[
+ ['Room 408','The Orderly'],['Below Intake','The Mortician'],['The Blue Hour','Investigation'],
+ ['High Life After Hours','Velvet'],['Bay B2','The Towman'],['West End Blackout','Switchblade Rook'],
+ ['Isaiah's Lock Shop','The Collector'],['The Bone Line','The Conductor'],['Greenwood After Dark','The Widow'],
+ ['Mercer's Table','Mercer's Champion'],['Property of D. Coleman','The Mimic'],['The Red Archive','Adrian Voss'],
+ ['Last Call for Vale','Marcus Vale'],['Before First Light','The First Tenant � Final boss']
+];
+const chapters=[
+ 'Read your wristband and take the flashlight','Escape the ward','Defeat the Orderly and take the lift',
+ 'Find the original intake report','Restore the morgue's UV lights','Defeat the Mortician and leave the morgue',
+ 'Meet Mara at the Blue Hour','Choose a way into High Life','High Life lead secured'
+];
+const clues=[
+ 'Hospital wristband � D. Coleman, admitted at 03:11. One of the doctors wears a copy.',
+ 'Orderly's badge � A hollow circle surrounds a red crescent. You saw it at High Life.',
+ 'Original intake report � The same patient appears on three records dated forty years apart.',
+ 'Mortician's transfer slip � Night deliveries signed for by the Hollow Legion.',
+ 'Mara's message � Sienna asked for help finding Trey before you went to High Life.'
+];
+const stageFor=step=>step<3?0:step<6?1:2;
+const mat=(color,glow=0)=>new T.MeshStandardMaterial({color,roughness:.73,emissive:glow,emissiveIntensity:glow?1.5:0});
+function box(parent,x,y,z,w,h,d,color,glow=0){
+ const m=new T.Mesh(new T.BoxGeometry(w,h,d),mat(color,glow));m.position.set(x,y,z);parent.add(m);return m;
+}
+function wall(x,z,w,d,c=0x35515b){
+ box(world,x,1.65,z,w,3.3,d,c);
+ box(world,x,.13,z,w+.02,.25,d+.02,0x14232c);solids.push({x,z,w,d});
+}
+function label(parent, words,x,y,z,width=2.5){
+ const cv=document.createElement('canvas');cv.width=512;cv.height=96;
+ const ctx=cv.getContext('2d');ctx.fillStyle='#071823';ctx.fillRect(0,0,512,96);ctx.fillStyle='#a5fff1';ctx.font='bold 34px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(words,256,48,490);
+ const map=new T.CanvasTexture(cv);map.colorSpace=T.SRGBColorSpace;
+ const mesh=new T.Mesh(new T.PlaneGeometry(width,width*.1875),new T.MeshBasicMaterial({map,side:T.DoubleSide}));mesh.position.set(x,y,z);parent.add(mesh);return mesh;
+}
+function lamp(x,y,z,c,power=24){
+ const light=new T.PointLight(c,power,13,1.8);light.position.set(x,y,z);world.add(light);
+ box(world,x,y+.08,z,1.5,.07,.2,c,c);
+}
+function item(name,x,y,z,color,act,shape=[.44,.24,.32]){
+ const mesh=box(world,x,y,z,...shape,color,color);
+ const tag=label(world,name,x,y+.47,z,1.48);
+ const entry={name,mesh,tag,act};interact.push(entry);return entry;
+}
+function remove(entry){entry.mesh.visible=entry.tag.visible=false;}
+function actor(name,x,z,color,hp,kind){
+ const g=new T.Group();world.add(g);g.position.set(x,0,z);
+ box(g,0,1.03,0,.57,.69,.31,color);
+ box(g,0,1.12,.17,.22,.36,.035,0x162126);
+ const head=new T.Mesh(new T.SphereGeometry(.19,14,10),mat(0xa77c69));head.position.y=1.58;g.add(head);
+ box(g,0,1.545,.159,.32,.092,.085,0xa2b5b4);
+ const legs=[-.16,.16].map(x=>box(g,x,.36,0,.2,.72,.23,0x263243));
+ const arms=[-.37,.37].map(x=>box(g,x,1,0,.15,.58,.18,color));
+ const tag=label(g,name,0,2.03,0,1.46);
+ const pale=kind==='zombie'?0x747f65:0xc3b4aa;
+ head.material.color.setHex(pale);
+ for(const eye of [-.073,.073])box(g,eye,1.62,.17,.045,.024,.05,0xf75c50,0xee2511);
+ if(kind!=='zombie')for(const fang of [-.065,.065])box(g,fang,1.515,.198,.026,.068,.04,0xeee7d4);
+ const enemy={g,hp,max:hp,x,z,legs,arms,tag,kind,next:0};
+ if(kind==='mortician')g.scale.setScalar(1.28);
+enemies.push(enemy);return enemy;
+}
+box(world,0,-.13,-13,16,.25,52,0x283b46);
+box(world,0,3.48,-13,16,.2,52,0x1e2630);
+for(let z=12;z>-39;z-=2)for(let x=-7;x<=7;x+=2){
+ box(world,x,.005,z,1.97,.013,1.97,(x+z)%4===0?0x3e4d53:0x303c43);
+}
+wall(-8,-13,.3,52);wall(8,-13,.3,52);
+wall(0,12.9,16,.35);wall(0,-38.9,16,.35);
+wall(-3.1,5.8,.22,13);wall(3.1,5.8,.22,13);
+for(const z of [-2,-13,-27]){
+ wall(-5.15,z,5.7,.3);wall(5.15,z,5.7,.3);
+}
+const gates=[{z:-13,step:3},{z:-27,step:6}].map(g=>({...g,x:0,w:4.6,d:.31,mesh:box(world,0,1.66,g.z,4.6,3.32,.31,0x34434d)}));
+for(const z of [8,1,-5,-11])lamp(0,3.11,z,0xa9e1ee);
+for(const z of [-16,-22,-25])lamp(0,3.12,z,0xd65f6b,20);
+for(const z of [-30,-35])lamp(0,3.12,z,0xbb579e,30);
+box(world,-1.35,.38,9,1.18,.62,2.52,0x596b78);
+box(world,-1.35,.72,9,1.2,.16,2.38,0xc3d4d4);
+box(world,-1.35,.84,9.8,1.02,.16,.52,0xe7e8de);
+box(world,-2.55,1.14,9,.35,.45,.41,0x121e26);
+box(world,-2.55,1.17,8.78,.29,.17,.03,0x35a89d,0x169887);
+box(world,1.8,.6,6,.9,.95,.63,0x7d929b);
+label(world,'ST. ORISON / ROOM 408',0,2.73,-1.9,3.7);
+label(world,'SERVICE LIFT',0,2.74,-12.8,3.3);
+label(world,'BELOW INTAKE',0,2.75,-15,4);
+label(world,'THE BLUE HOUR',0,2.76,-29.2,4.5);
+label(world,'VR � STICK MOVE � TRIGGER USE / ATTACK',0,2.46,5,3.9);
+for(const x of [-7.5,7.5])for(const z of [-17,-20,-23,-25]){
+ for(let y=.42;y<2.55;y+=.62){
+  box(world,x,y,z,.82,.58,1.55,0x62717b);
+  box(world,x>0?7.06:-7.06,y,z,.06,.095,.32,0xa9acad);
+ }
+}
+for(const x of [-4.1,4.1]){
+ box(world,x,.67,-21,1.1,.19,2.55,0x687987);
+ for(const z of [-22,-20])box(world,x,.32,z,.8,.62,.17,0x3e4d55);
+}
+box(world,-5,.56,-34,3.8,1.08,1.25,0x35223b);
+box(world,-5,1.13,-34,3.95,.12,1.4,0x664257);
+box(world,5,.52,-34,3,1.02,1.4,0x4d264e);
+box(world,0,.145,-37,9,.27,2.1,0x251e2d);
+const uv=new T.SpotLight(0xa082ff,95,16,.81,.56,1.8);
+uv.position.set(0,3.15,-22);uv.target.position.set(0,0,-23);
+world.add(uv,uv.target);uv.visible=false;
+const cart=new T.Group();world.add(cart);
+box(cart,0,.9,0,.9,.09,.64,0x8d9faa);box(cart,0,.47,0,.87,.08,.63,0x667785);
+for(const x of [-.38,.38])for(const z of [-.26,.26])box(cart,x,.48,z,.06,.85,.06,0xa6b4be);
+const cartBlock={x:0,z:-3,w:.9,d:.64};solids.push(cartBlock);
+function resetCart(){cart.position.set(0,0,-3);cartBlock.z=-3;}
+function readyWard(){
+ if(state.step===0&&state.clues.includes(0)&&state.gear==='Flashlight'){
+  setStep(1,'The doctor at the door is wearing your wristband.');
+ }
+}
+item('Wristband',-.62,1,8.1,0x8af4eb,e=>{record(0);remove(e);say('D. Coleman. Admitted at 03:11.');readyWard();});
+item('Steel flashlight',1.8,1.18,6,0xfbb776,e=>{state.gear='Flashlight';remove(e);readyWard();update();});
+item('Push equipment cart',0,1.1,-2.9,0xf9cf91,e=>{
+ if(state.step<1)return;
+ cart.position.z=-6.1;cartBlock.z=-6.1;remove(e);
+ const doctor=enemies.find(n=>n.kind==='doctor');
+ if(doctor.hp>0&&doctor.g.position.distanceTo(cart.position)<4){doctor.hp=0;doctor.g.visible=false;}
+ say('The cart crashes into the ward. Keep moving.');
+});
+item('Spare tools',-1.8,1.06,-5.6,0xdeac69,e=>{state.throwables+=6;remove(e);update();say('Six tools picked up.');});
+item('Stun launcher',1.7,1,-8,0x58a5d2,e=>{state.gear='Stun launcher';state.ammo+=24;remove(e);update();say('Stun launcher picked up.');});
+item('Service lift panel',0,1.18,-12,0x4addbd,e=>{
+ if(state.step<2)return say('Get farther into the ward.');
+ if(!state.clues.includes(1))return say('The Orderly has the lift credentials.');
+ remove(e);state.hp=100;state.ammo=Math.max(state.ammo,20);state.gear='Stun launcher';
+ setStep(3,'BELOW INTAKE. Find the original report.'); 
+});
+item('Original intake report',.2,1.1,-17,0x6df5d4,e=>{
+ if(state.step!==3)return;
+ record(2);remove(e);setStep(4,'The same patient appears on records forty years apart.');
+});
+item('UV breaker',1.5,1.21,-20.5,0x9a8aff,e=>{
+ if(state.step!==4)return say('Find the report first.');
+ uv.visible=true;remove(e);setStep(5,'The Mortician is exposed in the UV light.');
+});
+item('Morgue exit release',0,1.16,-26.1,0x6df5d4,e=>{
+ if(state.step!==5||!state.clues.includes(3))return say('The Mortician controls the exit.');
+ remove(e);state.hp=100;setStep(6,'The Blue Hour. Mara has been waiting for you.');
+});
+const mara=new T.Group();world.add(mara);mara.position.set(0,0,-32.35);
+box(mara,0,1.12,0,.52,.7,.31,0x813452);
+box(mara,0,.49,0,.39,.6,.29,0x302437);
+const maraHead=new T.Mesh(new T.SphereGeometry(.19,14,10),mat(0x956959));
+maraHead.position.y=1.68;mara.add(maraHead);
+item('Talk to Mara',0,1,-31.7,0xe46ba7,e=>{
+ if(state.step!==6)return;record(4);state.rep+=2;state.cash+=150;
+ remove(e);setStep(7,'Mara: "Sienna used to work High Life. We can get you back inside."');
+});
+function chooseRoute(route){
+ if(state.step!==7)return say('Talk to Mara first.');
+ state.route=route;
+ for(const entry of interact.filter(i=>i.name.startsWith('Call ')))remove(entry);
+ setStep(8,route==='staff'?'Mara will get you through the staff door.':'Rook will meet you at the alley entrance.');
+}
+item('Call Mara � staff door',-2.7,1.08,-35,0x6de8c5,()=>chooseRoute('staff'));
+item('Call Rook � alley entrance',2.7,1.08,-35,0xf2a072,()=>chooseRoute('alley'));
+item('Replenish health',-3.7,1.12,-33.45,0xe377a7,e=>{state.hp=100;state.rep++;remove(e);update();say('The bartender pours you water. +1 reputation.');});
+actor('False doctor',-1.35,-4,0xd7dbd6,2,'doctor');
+actor('The Orderly',0,-10.4,0xd1d7cc,5,'orderly');
+actor('Reanimated patient',-1.6,-18.8,0x6a786d,2,'zombie');
+actor('Reanimated patient',2.2,-23,0x626e77,2,'zombie');
+actor('The Mortician',0,-24.1,0x524659,8,'mortician');
+const vrText=new T.Group();rig.add(vrText);vrText.position.set(0,2.28,-1.75);vrText.visible=false;
+let statusPlane;
+function refreshVR(){
+ if(mode!=='immersive-vr')return;
+ if(statusPlane){vrText.remove(statusPlane);statusPlane.material.map.dispose();statusPlane.material.dispose();statusPlane.geometry.dispose();}
+ statusPlane=label(vrText,state.hp>0?chapters[state.step]+' � '+state.hp+' HP':'Trigger to retry',0,0,0,2.4);
+}
+const arRelic=new T.Group();arWorld.add(arRelic);
+box(arRelic,0,0,0,.27,.15,.032,0x53d8d3,0x12605e);
+box(arRelic,0,0,.022,.21,.1,.016,0x132c37);
+let arPanel;
+function arNext(controller){
+ if(!arPlaced){
+  const p=new T.Vector3(0,-.08,-.85).applyMatrix4(controller.matrixWorld);
+  arRelic.position.copy(p);arRelic.quaternion.copy(controller.getWorldQuaternion(new T.Quaternion()));arPlaced=true;arRelic.visible=true;
+ }else arIndex=(arIndex+1)%4;
+ if(arPanel){arRelic.remove(arPanel);arPanel.material.map.dispose();arPanel.material.dispose();arPanel.geometry.dispose();}
+ arPanel=label(arRelic,clues[arIndex],0,.19,0,.83);
+}
+function tone(freq,duration,type='sine'){
+ try{
+ audio ||= new AudioContext();if(audio.state==='suspended')audio.resume();
+ const o=audio.createOscillator(),g=audio.createGain(),t=audio.currentTime;o.type=type;o.frequency.setValueAtTime(freq,t);
+ g.gain.setValueAtTime(.08,t);g.gain.exponentialRampToValueAtTime(.001,t+duration);o.connect(g).connect(audio.destination);o.start();o.stop(t+duration);
+ }catch{}
+}
+function reset(){
+ resetCart();uv.visible=false;
+ state={step:0,route:null,hp:100,cash:0,rep:0,ammo:0,throwables:0,gear:'Empty hands',clues:[],nextAttack:0};
+ yaw=pitch=0;rig.position.set(0,0,8.2);rig.rotation.set(0,0,0);camera.rotation.set(0,0,0);camera.position.set(0,mode==='immersive-vr'?0:1.63,0);
+ for(const i of interact)i.mesh.visible=i.tag.visible=true;
+ for(const n of enemies){n.hp=n.max;n.next=0;n.g.position.set(n.x,0,n.z);n.g.visible=false;}
+ for(const s of shots){world.remove(s.mesh);s.mesh.geometry.dispose();s.mesh.material.dispose();}shots.length=0;
+ update();say('Heart monitor. Burning lights. Nothing before 03:11.',7);
+}
+function record(index){if(!state.clues.includes(index))state.clues.push(index);}
+function setStep(step,message){state.step=step;update();say(message,7);}
+function say(message,seconds=4){$('line').textContent=message;toast=elapsed+seconds;}
+function update(){
+ const s=state.step;
+ $('place').textContent='LEVEL '+(stageFor(s)+1)+' / 14 � '+campaign[stageFor(s)][0].toUpperCase();
+ $('objective').textContent=state.hp>0?chapters[s]:'Coleman is down. Restart to try again.';
+ $('stats').textContent=state.hp+' HP  /  $'+state.cash+'  /  REP '+state.rep+'  /  '+state.gear+'  /  '+state.ammo+' charges  /  '+state.throwables+' throws';
+ gates.forEach(g=>g.mesh.visible=s<g.step);
+ refreshVR();
+}
+function move(dx,dz){
+ const obstacles=solids.concat(gates.filter(g=>g.mesh.visible));
+ const blocked=(x,z)=>obstacles.some(o=>Math.abs(x-o.x)<o.w/2+.26&&Math.abs(z-o.z)<o.d/2+.26);
+ if(!blocked(rig.position.x+dx,rig.position.z))rig.position.x+=dx;
+ if(!blocked(rig.position.x,rig.position.z+dz))rig.position.z+=dz;
+}
+function aim(controller){
+ const source=controller||camera;source.updateWorldMatrix(true,false);ray.ray.origin.setFromMatrixPosition(source.matrixWorld);
+ ray.ray.direction.set(0,0,-1).transformDirection(source.matrixWorld);
+}
+function target(){
+ const meshes=interact.filter(i=>i.mesh.visible).map(i=>i.mesh);
+ const hit=ray.intersectObjects(meshes)[0];
+ if(hit&&hit.distance<3.15)return interact.find(i=>i.mesh===hit.object);
+ const origin=ray.ray.origin;
+ return interact.filter(i=>i.mesh.visible&&i.mesh.position.distanceTo(origin)<1.55)
+ .sort((a,b)=>a.mesh.position.distanceToSquared(origin)-b.mesh.position.distanceToSquared(origin))[0];
+}
+function use(controller){
+ if(!state.hp)return;
+ aim(controller);const i=target();if(i)i.act(i);else say('Move closer and aim at an item.');
+}
+function attack(controller,throwing=false){
+ if(!state.hp||elapsed<state.nextAttack)return;
+ const ranged=!throwing&&state.gear==='Stun launcher';
+ if(throwing&&!state.throwables)return say('Pick up loose tools to throw.');
+ if(ranged&&!state.ammo)return say('No stun charges. Press G to throw a tool.');
+ if(!throwing&&!ranged&&state.gear==='Empty hands')return say('Pick up the flashlight.');
+ state.nextAttack=elapsed+(ranged?.22:.42);
+ if(throwing)state.throwables--;if(ranged)state.ammo--;
+ aim(controller);const max=ranged?18:throwing?11:2.7;
+ const live=enemies.filter(n=>n.g.visible&&n.hp>0);
+ const hit=live.map(n=>{
+ const body=new T.Vector3(n.g.position.x,1.18,n.g.position.z);
+ return {n,along:body.clone().sub(ray.ray.origin).dot(ray.ray.direction),miss:ray.ray.distanceToPoint(body)};
+ }).filter(h=>h.along>0&&h.along<max&&h.miss<(throwing?.88:.8)).sort((a,b)=>a.along-b.along)[0];
+ if(ranged||throwing){
+ const mesh=box(world,...ray.ray.origin.toArray(),.08,.08,throwing?.19:.27,throwing?0xffac5c:0x65e9ff,throwing?0xffac5c:0x65e9ff);
+ shots.push({mesh,v:ray.ray.direction.clone().multiplyScalar(20),life:(hit?.along||max)/20});
+ }
+ tone(ranged?152:98,.13,'triangle');
+ if(hit){
+ const n=hit.n;if(n.kind==='mortician'&&!uv.visible){say('The Mortician shrugs it off. Restore the UV lights.');return update();}n.hp-=throwing?2:1;n.next=elapsed+.8;
+ if(n.hp<=0){
+ n.g.visible=false;state.cash+=n.kind==='orderly'||n.kind==='mortician'?250:40;state.rep++;
+ if(n.kind==='orderly'){record(1);say('The Orderly drops his badge. The service lift is unlocked.');}
+ if(n.kind==='mortician'){record(3);say('You found the Hollow Legion transfer slip. Open the morgue exit.');}
+ }else say(n.kind==='orderly'||n.kind==='mortician'?'Boss stability � '+n.hp+' hits left':'Hit');
+ }
+ update();
+}
+function start(){
+ running=true;$('cover').hidden=true;$('hud').style.display='block';tone(90,.3);update();
+}
+function journal(open,showCampaign=false){
+ $('log').hidden=!open;
+ if(open){
+ document.exitPointerLock?.();
+ $('logTitle').textContent=showCampaign?'Campaign':'Case file';
+ if(showCampaign){
+  $('entries').replaceChildren(...campaign.map(([name,boss],index)=>{
+   const row=document.createElement('p');
+   const status=index>2?' � Planned':index<stageFor(state.step)||state.step===8?' � Completed':index===stageFor(state.step)?' � Current':' � Upcoming';
+   row.textContent=(index+1)+'. '+name+' � '+boss+status;
+   return row;
+  }));
+ }else $('entries').replaceChildren(...(state.clues.length?state.clues.map(i=>{const row=document.createElement('p');row.textContent=clues[i];return row;}):[document.createTextNode('No evidence collected yet.')]));
+ }
+ keys.clear();
+}
+$('start').onclick=()=>{start();say('WASD to move � mouse to look � E use � click attack � G throw',8);renderer.domElement.requestPointerLock?.()?.catch?.(()=>{});};
+$('campaign').onclick=()=>journal(true,true);$('journal').onclick=()=>journal(true);$('close').onclick=()=>journal(false);$('restart').onclick=reset;
+$('use').onclick=()=>use();$('fire').onclick=()=>attack();$('throw').onclick=()=>attack(null,true);
+addEventListener('keydown',e=>{
+ if(!running||mode)return;const k=e.key.toLowerCase();
+ if(k==='j'&&!e.repeat)return journal($('log').hidden);
+ if(!$('log').hidden)return;
+ keys.add(k);if(e.repeat)return;
+ if(k==='e')use();if(k==='g')attack(null,true);
+});addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));addEventListener('blur',()=>keys.clear());
+let drag=null;
+renderer.domElement.addEventListener('pointerdown',e=>{
+ if(!running||mode||!$('log').hidden)return;
+ if(e.pointerType==='mouse'){
+ if(document.pointerLockElement===renderer.domElement)attack();
+ else renderer.domElement.requestPointerLock?.()?.catch?.(()=>{});
+ }else{drag={id:e.pointerId,x:e.clientX,y:e.clientY};renderer.domElement.setPointerCapture(e.pointerId);}
+});
+function look(dx,dy){yaw-=dx*.003;pitch=T.MathUtils.clamp(pitch-dy*.003,-1.35,1.35);camera.rotation.set(pitch,yaw,0,'YXZ');}
+addEventListener('mousemove',e=>{if(document.pointerLockElement===renderer.domElement&&!mode)look(e.movementX,e.movementY);});
+renderer.domElement.addEventListener('pointermove',e=>{if(drag?.id===e.pointerId){look(e.clientX-drag.x,e.clientY-drag.y);drag.x=e.clientX;drag.y=e.clientY;}});
+for(const event of ['pointerup','pointercancel'])renderer.domElement.addEventListener(event,()=>{drag=null;});
+for(const b of document.querySelectorAll('[data-key]')){
+ b.onpointerdown=e=>{b.setPointerCapture(e.pointerId);keys.add(b.dataset.key);};
+ b.onpointerup=b.onpointercancel=b.onlostpointercapture=()=>keys.delete(b.dataset.key);
+}
+for(let i=0;i<2;i++){
+ const c=renderer.xr.getController(i);rig.add(c);
+ c.addEventListener('select',()=>{
+  if(mode==='immersive-ar')return arNext(c);
+  if(!state.hp)return reset();
+  aim(c);const item=target();if(item)item.act(item);else attack(c);
+ });
+ c.addEventListener('squeeze',()=>{if(mode==='immersive-vr')attack(c,true);});
+}
+async function xr(requested){
+ try{
+ if(!navigator.xr||!await navigator.xr.isSessionSupported(requested))throw Error('This browser or device does not support '+(requested==='immersive-ar'?'immersive AR':'immersive VR')+'. Open the game over HTTPS on a compatible device.');
+ const ar=requested==='immersive-ar';
+ const session=await navigator.xr.requestSession(requested,ar?{optionalFeatures:['local','dom-overlay'],domOverlay:{root:document.body}}:{requiredFeatures:['local-floor']});
+ mode=requested;renderer.xr.setReferenceSpaceType(ar?'local':'local-floor');document.exitPointerLock?.();
+ const previous=rig.position.clone();
+ session.addEventListener('end',()=>{
+ mode='';arWorld.visible=false;world.visible=true;vrText.visible=false;rig.position.copy(previous);
+ camera.position.set(0,1.63,0);camera.rotation.set(pitch,yaw,0,'YXZ');
+ if(ar){$('cover').hidden=false;$('hud').style.display='none';}
+ });
+ if(ar){world.visible=false;arWorld.visible=true;arPlaced=false;arIndex=0;arRelic.visible=false;rig.position.set(0,0,0);$('cover').hidden=true;$('hud').style.display='none';}
+ else{vrText.visible=true;start();}
+ camera.position.set(0,0,0);camera.rotation.set(0,0,0);
+ await renderer.xr.setSession(session);
+ }catch(error){$('notice').textContent=error.message;}
+}
+$('vr').onclick=()=>xr('immersive-vr');$('ar').onclick=()=>xr('immersive-ar');
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+reset();
+renderer.setAnimationLoop(()=>{
+ const dt=Math.min(.05,clock.getDelta());elapsed+=dt;
+ scene.background=mode==='immersive-ar'?null:fogColor;
+ scene.fog=mode==='immersive-ar'?null:fog;
+ if(running&&mode!=='immersive-ar'&&$('log').hidden&&state.hp){
+  const session=renderer.xr.getSession();
+  let side=Number(keys.has('d'))-Number(keys.has('a')),forward=Number(keys.has('w'))-Number(keys.has('s'));
+  let heading=yaw;
+  if(mode==='immersive-vr'){
+   const input=Array.from(session?.inputSources||[]).find(s=>s.handedness==='left')||Array.from(session?.inputSources||[])[0];
+   const axes=input?.gamepad?.axes||[];
+   side=axes.length>=4?axes[2]:axes[0]||0;forward=-(axes.length>=4?axes[3]:axes[1]||0);
+   const direction=new T.Vector3();renderer.xr.getCamera().getWorldDirection(direction);heading=Math.atan2(-direction.x,-direction.z);
+  }
+  if(Math.hypot(side,forward)>.17){
+   const scale=dt*(mode?2.6:4.1)/Math.max(1,Math.hypot(side,forward));
+   move((Math.cos(heading)*side-Math.sin(heading)*forward)*scale,(-Math.sin(heading)*side-Math.cos(heading)*forward)*scale);
+  }
+  for(const n of enemies){
+   if(n.hp<=0)continue;
+   const z=rig.position.z;
+   if(state.step===1&&z<-7.2)setStep(2,'The Orderly steps out of the service lift.');
+   n.g.visible=n.kind==='orderly'?state.step===2:n.kind==='doctor'?state.step>=1&&state.step<3&&z<1:n.kind==='zombie'?state.step>=3&&state.step<6&&z<-14:state.step>=4&&state.step<6;
+   if(!n.g.visible)continue;
+   const p=n.g.position,dx=rig.position.x-p.x,dz=z-p.z,dist=Math.hypot(dx,dz);
+   n.g.rotation.y=Math.atan2(dx,dz);n.tag.rotation.y=-n.g.rotation.y;
+   if(dist>1.2){const speed=n.kind==='orderly'?2.03:n.kind==='mortician'?1.48:n.kind==='zombie'?1.18:1.68;p.x+=dx/dist*dt*speed;p.z+=dz/dist*dt*speed;}
+   const gait=dist>1.2?Math.sin(elapsed*9)*.55:0;n.legs[0].rotation.x=gait;n.legs[1].rotation.x=-gait;n.arms[0].rotation.x=-gait;n.arms[1].rotation.x=gait;
+   if(dist<1.65&&elapsed>n.next){n.next=elapsed+1.12;state.hp=Math.max(0,state.hp-(n.kind==='mortician'?17:n.kind==='orderly'?13:9));tone(55,.16,'triangle');update();}
+  }
+  for(let i=shots.length-1;i>=0;i--){
+   const s=shots[i];s.life-=dt;s.mesh.position.addScaledVector(s.v,dt);
+   if(s.life<=0){world.remove(s.mesh);s.mesh.geometry.dispose();s.mesh.material.dispose();shots.splice(i,1);}
+  }
+  if(!mode){aim();const item=target();$('hint').textContent=item?'E / USE � '+item.name:'';}
+  if(elapsed>toast)$('line').textContent='';
+ }
+ renderer.render(scene,camera);
+});
+</script></html>
